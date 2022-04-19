@@ -2,3 +2,21 @@
 #pragma once
 extern ecomp_Bool_t               ui_IsRunExecFake; /* line: 60, size: 4, scope: unknown */
 
+
+// STOP GENERATED CODE
+
+//
+// ui_message.c
+//
+void ui_UserErrorWithErrno( int my_errno, const char *msg, ... );
+
+//
+// ui_printstack.c
+//
+void ui_SetProgName( const char *prog_name );
+
+//
+// ui_real.c
+//
+void ui_Init( const char *prog_name );
+void ui_SetMessageLanguageByLocale( void );

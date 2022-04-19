@@ -6,6 +6,9 @@ typedef int ecomp_Id_t; /* size: 4 */
 /* line: 40 */
 typedef unsigned int ecomp_Bool_t; /* size: 4 */
 
+#define ECOMP_FALSE (ecomp_Bool_t)(0)
+#define ECOMP_TRUE  (ecomp_Bool_t)(!0)
+
 /* line: 53 */
 typedef enum {
 	ECOMP_YES_CMP     = 0,

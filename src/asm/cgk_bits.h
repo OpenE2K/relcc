@@ -54,7 +54,11 @@ extern long long unsigned int     cgk_CmdAddr; /* line: 113, size: 8, scope: unk
 extern ecomp_Bool_t               cgk_UnpackedForPrintCodeFlag; /* line: 118, size: 4, scope: unknown */
 
 /* line: 144 */
-typedef union  SyllableUnion; /* size: 4 */
+typedef union SyllableUnion {
+	unsigned int	Unsigned;
+	unsigned short	UnsignedShort[2];
+	unsigned char	UnsignedChar[4];
+} SyllableUnion; /* size: 4 */
 
 extern SyllableUnion              UnpackedInstruction[33]; /* line: 154, size: 132, scope: unknown */
 
