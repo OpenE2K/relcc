@@ -10,3 +10,5 @@ typedef enum {
 	UI_LANGUAGE_LAST     = 5,
 } ui_Language_t; /* size: 4 */
 
+ui_Language_t ui_GetMessagesLanguageByLocale( void );
+const char *ui_ConvertStringFromKOI8RToUTF8( const char *str );

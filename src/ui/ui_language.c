@@ -12,32 +12,133 @@
 #include "ui/ui_colorize.h"
 #include "ui/ui_exec.h"
 #include "tools/buff_iface.h"
-ui_Language_t ui_GetMessagesLanguageByLocale(void)                    //    15
-{ /* low_pc=0x127dc10 */
-	
-Finish:                                                               //    51
-	ui_Language_t ui_Language; /* scope: global */                //    17
-	const char  * env; /* scope: local */                         //    18
-	{ /* ui_GetMessagesLanguageByLocale+0x14d */
-		const const char  *  tail; /* scope: local */         //    80
-	} /* lexblock size=172 */
-}
 
-static ui_Language_t              ui_Language; /* line: 17, size: 4, scope: global */
+ui_Language_t ui_GetMessagesLanguageByLocale(void)                    //    15
+{
+	static ui_Language_t ui_Language;
+	const char  * env; /* scope: local */                         //    18
+
+	if( ui_Language )
+		return ui_Language;
+
+	env = ui_Getenv( "LC_ALL" );
+	if( !env || !env[0] )
+	{
+		env = ui_Getenv( "LC_MESSAGES" );
+		if( !env || !env[0] )
+		{
+			env = ui_Getenv( "LANG" );
+			if( !env || !env[0] )
+				env = NULL;
+		}
+	}
+	if( env )
+	{
+		if( !strcmp( env, "en_US" ))
+		{
+			ui_Language = UI_LANGUAGE_EN_KOI8R;
+		}
+		else if( !strcmp( env, "ru_RU" ))
+		{
+			ui_Language = UI_LANGUAGE_RU_UTF8;
+		}
+		else if( !strncmp( env, "ru.RU.", 6 ))
+		{
+			const char *tail = env + 6;
+			if( !strcasecmp( tail, "UTF-8" ) || !strcasecmp( tail, "UTF_8" ) || !strcasecmp( tail, "UTF8" ))
+			{
+				ui_Language = UI_LANGUAGE_RU_UTF8;
+			}
+			else if( !strcasecmp( tail, "KOI8-R" ) || !strcasecmp( tail, "KOI8_R" ) || !strcasecmp( tail, "KOI8R" ))
+			{
+				ui_Language = UI_LANGUAGE_RU_KOI8R;
+			}
+		}
+	}
+	else
+	{
+		ui_Language = UI_LANGUAGE_EN_UTF8;
+	}
+
+	return ui_Language;
+}
 
 /* line: 102 */
 typedef unsigned int ui_UCode_t; /* size: 4 */
 
-static const const ui_UCode_t     ui_KOI8RToUnicodeTable[256]; /* line: 106, size: 1024, scope: global */
+static const ui_UCode_t     ui_KOI8RToUnicodeTable[256]; /* line: 106, size: 1024, scope: global */
+
+static const ui_UCode_t ui_KOI8RToUnicodeTable[256] =
+{
+//      1      2      3      4      5      6      7      8      9      10     11     12     13     14     15    16
+	0u,    1u,    2u,    3u,    4u,    5u,    6u,    7u,    8u,    9u,    10u,   11u,   12u,   13u,   14u,   15u,
+	16u,   17u,   18u,   19u,   20u,   21u,   22u,   23u,   24u,   25u,   26u,   27u,   28u,   29u,   30u,   31u,
+	32u,   33u,   34u,   35u,   36u,   37u,   38u,   39u,   40u,   41u,   42u,   43u,   44u,   45u,   46u,   47u,
+	48u,   49u,   50u,   51u,   52u,   53u,   54u,   55u,   56u,   57u,   58u,   59u,   60u,   61u,   62u,   63u,
+	64u,   65u,   66u,   67u,   68u,   69u,   70u,   71u,   72u,   73u,   74u,   75u,   76u,   77u,   78u,   79u,
+	80u,   81u,   82u,   83u,   84u,   85u,   86u,   87u,   88u,   89u,   90u,   91u,   92u,   93u,   94u,   95u,
+	96u,   97u,   98u,   99u,   100u,  101u,  102u,  103u,  104u,  105u,  106u,  107u,  108u,  109u,  110u,  111u,
+	112u,  113u,  114u,  115u,  116u,  117u,  118u,  119u,  120u,  121u,  122u,  123u,  124u,  125u,  126u,  127u,
+
+	9472u, 9474u, 9484u, 9488u, 9492u, 9496u, 9500u, 9508u, 9516u, 9524u, 9532u, 9600u, 9604u, 9608u, 9612u, 9616u,
+	9617u, 9618u, 9619u, 8992u, 9632u, 8729u, 8730u, 8776u, 8804u, 8805u, 160u,  8993u, 176u,  178u,  183u,  247u,
+	9552u, 9553u, 9554u, 1105u, 9555u, 9556u, 9557u, 9558u, 9559u, 9560u, 9561u, 9562u, 9563u, 9564u, 9565u, 9566u,
+	9567u, 9568u, 9569u, 1025u, 9570u, 9571u, 9572u, 9573u, 9574u, 9575u, 9576u, 9577u, 9578u, 9579u, 9580u, 169u,
+	1102u, 1072u, 1073u, 1094u, 1076u, 1077u, 1092u, 1075u, 1093u, 1080u, 1081u, 1082u, 1083u, 1084u, 1085u, 1086u,
+	1087u, 1103u, 1088u, 1089u, 1090u, 1091u, 1078u, 1074u, 1100u, 1099u, 1079u, 1096u, 1101u, 1097u, 1095u, 1098u,
+	1070u, 1040u, 1041u, 1062u, 1044u, 1045u, 1060u, 1043u, 1061u, 1048u, 1049u, 1050u, 1051u, 1052u, 1053u, 1054u,
+	1055u, 1071u, 1056u, 1057u, 1058u, 1059u, 1046u, 1042u,	1068u, 1067u, 1047u, 1064u, 1069u, 1065u, 1063u, 1066u
+};
 
 ui_UCode_t ui_KOI8RToUnicode(unsigned char c)                         //   146
-{ /* low_pc=0x127de11 */
+{
 	ui_UCode_t res; /* scope: local */                            //   148
+	ecomp_Assert( c > 0 && c < ((int)(sizeof(ui_KOI8RToUnicodeTable) / sizeof((ui_KOI8RToUnicodeTable)[0]))));
+
+	res = ui_KOI8RToUnicodeTable[c];
+	ecomp_Assert( res != 0 );
+
+	return res;
 }
 
 int ui_UnicodeToUTF8(ui_UCode_t uc, char * chars)                     //   163
-{ /* low_pc=0x127de92 */
+{
 	int len; /* scope: local */                                   //   166
+
+	if ( uc > 0x7F )
+	{
+		if ( uc > 0x7FF )
+		{
+			if ( uc > 0xFFFF )
+			{
+				len = 4;
+				chars[0] = (uc >> 18) & 7 | 0xF0;
+				chars[1] = (uc >> 12) & 0x3F | 0x80;
+				chars[2] = (uc >> 6) & 0x3F | 0x80;
+				chars[3] = uc & 0x3F | 0x80;
+			}
+			else
+			{
+				len = 3;
+				chars[0] = (uc >> 12) | 0xE0;
+				chars[1] = (uc >> 6) & 0x3F | 0x80;
+				chars[2] = uc & 0x3F | 0x80;
+			}
+		}
+		else
+		{
+			len = 2;
+			chars[0] = (uc >> 6) | 0xC0;
+			chars[1] = uc & 0x3F | 0x80;
+		}
+	}
+	else
+	{
+		len = 1;
+		*chars = uc;
+	}
+
+	return len;
 }
 
 const char  * ui_ConvertSymbolFromKOI8RToUTF8(char c)                 //   204
@@ -45,15 +146,40 @@ const char  * ui_ConvertSymbolFromKOI8RToUTF8(char c)                 //   204
 	unsigned char koi8r_code; /* scope: local */                  //   206
 	ui_UCode_t ucode; /* scope: local */                          //   207
 	int len; /* scope: local */                                   //   208
-	char res_str; /* scope: global */                             //   209
-}
+	static char res_str[8]; /* scope: global */                   //   209
 
-static char                       res_str[8]; /* line: 209, size: 8, scope: global */
+	ucode = ui_KOI8RToUnicode( c );
+	len = ui_UnicodeToUTF8( ucode, res_str );
+	ecomp_Assert( len < (int)((int)(sizeof(res_str) / sizeof((res_str)[0]))) );
+	res_str[len] = 0;
+
+	return res_str;
+}
 
 const char  * ui_ConvertStringFromKOI8RToUTF8(const char  * str)      //   228
 { /* low_pc=0x127e024 */
 	const char  * p; /* scope: local */                           //   230
 	char * buf; /* scope: local */                                //   231
 	long unsigned int len; /* scope: local */                     //   232
+
+	len = 0;
+
+	for( p = str; *p; p++ )
+	{
+		const char *cp = ui_ConvertSymbolFromKOI8RToUTF8( p[0] );
+		len += strlen( cp );
+	}
+
+	buf = ui_Malloc( len );
+	buf[0] = 0;
+
+	for( p = str; *p; p++ )
+	{
+		const char *cp = ui_ConvertSymbolFromKOI8RToUTF8( p[0] );
+		strcat( buf, cp );
+		ecomp_Assert( strlen( buf) < len );
+	}
+
+	return buf;
 }
 
