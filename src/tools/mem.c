@@ -2,6 +2,12 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/time.h>
+#include <sys/types.h>
+#include <unistd.h>
+#include <ctype.h>
 #include "ecomp_types.h"
 #include "ecomp_options.h"
 #include "tools/mem_iface.h"
@@ -60,6 +66,11 @@ static int64_t                    mem_MaxUsageTime; /* line: 107, size: 8, scope
 /* line: 147 */
 typedef uint32_t mem_BoundData_t; /* size: 4 */
 
+#define MEM_MAGIC( i ) (0x348c592dU + (0x777666U << ( i )))
+#define MEM_MAGIC_SIZE 4
+
+#define MEM_CLOSED_MAGIC 0x87654321
+
 /* line: 161 */
 struct mem_StartBound_t {
 	struct mem_StartBound_t *  prev;                 /*     0     8 */
@@ -69,7 +80,7 @@ struct mem_StartBound_t {
 	mem_Size_t                 area:7;               /*    24:55  8 */
 	mem_Size_t                 is_internal:1;        /*    24:62  8 */
 	mem_Size_t                 is_forever:1;         /*    24:63  8 */
-	mem_BoundData_t            magic[4];             /*    32    16 */
+	mem_BoundData_t            magic[MEM_MAGIC_SIZE];             /*    32    16 */
 }; /* size: 48 */
 
 /* line: 179 */
@@ -77,8 +88,15 @@ typedef struct mem_StartBound_t mem_StartBound_t; /* size: 48 */
 
 /* line: 217 */
 typedef struct {
-	mem_BoundData_t            magic[4];             /*     0    16 */
+	mem_BoundData_t            magic[MEM_MAGIC_SIZE];             /*     0    16 */
 } mem_EndBound_t; /* size: 16 */
+
+#define MEM_ALIGN_SIZE_BOUNDARY ( 7ULL )
+#define MEM_ALIGN_SIZE( size ) ((( size ) + MEM_ALIGN_SIZE_BOUNDARY ) & ~MEM_ALIGN_SIZE_BOUNDARY )
+#define MEM_FRAGMENT_SIZE( size ) ( MEM_ALIGN_SIZE(( size )) + sizeof( mem_StartBound_t ) + sizeof( mem_EndBound_t ))
+#define MEM_ENDBOUND( ptr, size ) (mem_EndBound_t *)(( (char*)(ptr) ) + MEM_ALIGN_SIZE(( size )) + sizeof( mem_StartBound_t ))
+
+#define MEM_STARTBOUND( ptr ) ((mem_StartBound_t *)(( (char*)(ptr) ) - sizeof( mem_StartBound_t )))
 
 /* line: 259 */
 typedef struct {
@@ -88,8 +106,7 @@ typedef struct {
 	mem_Size_t                 nblock;               /*    64     8 */
 } mem_BoundListHead_t; /* size: 72 */
 
-static mem_BoundListHead_t        mem_FragmentList[80]; /* line: 262, size: 5760, scope: global */
-
+static mem_BoundListHead_t        mem_FragmentList[MEM_AREA_LAST]; /* line: 262, size: 5760, scope: global */
 static ecomp_Bool_t               mem_IsFragmentListInit; /* line: 263, size: 4, scope: global */
 
 ; /* line: 266, size: 2062873792, scope: global */
@@ -104,9 +121,32 @@ void mem_InitFragmentList(void)                                       //   282
 	mem_EndBound_t * end_p; /* scope: local */                    //   285
 	int area; /* scope: local */                                  //   286
 	int i; /* scope: local */                                     //   286
+
+	for( area = 0; area < MEM_AREA_LAST; area++ )
+	{
+		start_p = &mem_FragmentList[area].start;
+		end_p = &mem_FragmentList[area].end;
+
+		start_p->prev = start_p;
+		start_p->next = start_p;
+		start_p->usr_size = 0;
+		start_p->event_number = 0;
+		start_p->is_internal = 1; // TODO: CHECK
+		start_p->is_forever = 0; // TODO: CHECK
+		start_p->area = area;
+
+		for( i = 0; i < MEM_MAGIC_SIZE; i++ )
+		{
+			start_p->magic[i] = end_p->magic[i] = MEM_MAGIC( i );
+		}
+
+		mem_FragmentList[area].nblock = 0;
+	}
+
+	mem_IsFragmentListInit = ECOMP_TRUE;
 }
 
-void * mem_InitFragment(void * ptr, mem_Size_t size)                  //   323
+void * mem_InitFragment(void *ptr, mem_Size_t size)                  //   323
 { /* low_pc=0x126c8fe */
 	mem_StartBound_t * start_p; /* scope: local */                //   327
 	mem_StartBound_t * prev_p; /* scope: local */                 //   327
@@ -114,83 +154,330 @@ void * mem_InitFragment(void * ptr, mem_Size_t size)                  //   323
 	mem_EndBound_t * end_p; /* scope: local */                    //   328
 	mem_Size_t fragment_size; /* scope: local */                  //   329
 	int i; /* scope: local */                                     //   330
-	{ /* mem_InitFragment+0x354 */
-		mem_Size_t whole_size; /* scope: local */             //   373
-	} /* lexblock size=305 */
+	mem_Size_t whole_size; /* scope: local */             //   373
+	const mem_Area_t area = mem_CurArea;
+
+	ecomp_Assert( mem_CurArea >= MEM_AREA_UNKNOWN && mem_CurArea < MEM_AREA_LAST );
+	ecomp_Assert( mem_IsFragmentListInit );
+
+	start_p = ptr;
+	end_p = MEM_ENDBOUND( ptr, size );
+
+	prev_p = &mem_FragmentList[area].start;
+	next_p = mem_FragmentList[area].start.next;
+
+	start_p->prev = prev_p;
+	start_p->next = next_p;
+	start_p->usr_size = size;
+	start_p->is_internal = mem_IsInternalEvent;
+	start_p->is_forever = 0;
+	start_p->event_number = mem_InternalEventCounter;
+	start_p->area = area;
+
+	next_p->prev = start_p;
+	prev_p->next = start_p;
+
+	for( i = 0; i < MEM_MAGIC_SIZE; i++ )
+	{
+		start_p->magic[i] = end_p->magic[i] = MEM_MAGIC( i );
+	}
+
+	mem_FragmentList[area].nblock++;
+	mem_BlockStat[mem_IsInternalEvent].nblock++;
+	mem_BlockStat[mem_IsInternalEvent].usr_size += size;
+
+	fragment_size = MEM_FRAGMENT_SIZE( size );
+	mem_BlockStat[mem_IsInternalEvent].bound_size += fragment_size;
+
+	if( mem_BlockStat[mem_IsInternalEvent].max_usr_size <
+		mem_BlockStat[mem_IsInternalEvent].usr_size )
+	{
+		mem_BlockStat[mem_IsInternalEvent].max_usr_size = mem_BlockStat[mem_IsInternalEvent].usr_size;
+		mem_BlockStat[mem_IsInternalEvent].max_size_event_number = mem_InternalEventCounter;
+	}
+
+	if( mem_BlockStat[2].max_usr_size <
+		mem_BlockStat[1].usr_size + mem_BlockStat[0].usr_size )
+	{
+		mem_BlockStat[2].max_usr_size = mem_BlockStat[1].usr_size + mem_BlockStat[0].usr_size;
+		mem_BlockStat[2].max_size_event_number = mem_InternalEventCounter;
+	}
+
+	mem_AreasSize[area] += fragment_size;
+
+	return start_p + sizeof( mem_StartBound_t );
 }
 
 ecomp_Bool_t mem_CheckFragment(void * ptr, ecomp_Bool_t is_fatal)     //   430
-{ /* low_pc=0x126cdc1 */
+{
 	mem_StartBound_t * start_p; /* scope: local */                //   434
 	mem_EndBound_t * end_p; /* scope: local */                    //   435
 	int i; /* scope: local */                                     //   436
-	{ /* mem_CheckFragment+0xfd */
-		void * entry_ptr; /* scope: local */                  //   473
-	} /* lexblock size=360 */
-	{ /* mem_CheckFragment+0x32f */
-		void * entry_ptr; /* scope: local */                  //   499
-	} /* lexblock size=337 */
+
+	if( ptr == NULL || (uintptr_t)ptr < 0x1000 || ( (uintptr_t)ptr & 3 ) != 0 )
+	{
+		if( is_fatal )
+			ecomp_InternalError_( "invalid pointer value" );
+		ecomp_InternalWarning_( "invalid pointer value" );
+
+		return ECOMP_FALSE;
+	}
+
+	start_p = (mem_StartBound_t *)ptr;
+	end_p = MEM_ENDBOUND( ptr, start_p->usr_size );
+
+	for( i = 0; i < 4; i++ )
+	{
+		if( start_p->magic[i] != MEM_MAGIC( i ))
+		{
+			void *entry_ptr = start_p + 1;
+			if( start_p->magic[i] == MEM_CLOSED_MAGIC )
+				ecomp_InternalWarning_( "attempt to use memory block at addr %p which is already released or",
+					entry_ptr );
+
+			ecomp_InternalWarning_( "invalid write at %p: magic num check failed (got 0x%x, expected 0x%x)",
+				start_p->magic + i, start_p->magic[i], MEM_MAGIC( i ));
+
+			if( start_p->magic + i < entry_ptr )
+			{
+				ecomp_InternalWarning_( "write at %zu bytes before a block of size %zu alloc\'d",
+					(uintptr_t)entry_ptr - (uintptr_t)(start_p->magic + i), start_p->usr_size );
+			}
+			else
+			{
+				ecomp_InternalWarning_( "write at %zu bytes after a block of size %zu alloc\'d",
+					(uintptr_t)start_p - ((((uintptr_t)i + 8) * 4 - (uintptr_t)entry_ptr) - start_p->usr_size), start_p->usr_size );
+			}
+
+			if( is_fatal )
+				ecomp_InternalError_( "memory check failed" );
+
+			return ECOMP_FALSE;
+		}
+	}
+
+	if( end_p == 0 || (uintptr_t)end_p < 0x1000 || ((uintptr_t)end_p & 3) != 0 )
+	{
+		if( !is_fatal )
+			ecomp_InternalError_( "memory bound block is destroyed" );
+		else ecomp_InternalWarning_( "memory bound block is destroyed" );
+
+		return ECOMP_FALSE;
+	}
+
+	for( i = 0; i < 4; i++ )
+	{
+		void * entry_ptr = start_p + 1;
+
+		if( end_p->magic[i] != MEM_MAGIC( i ))
+		{
+			ecomp_InternalWarning_( "invalid write at %p: magic num check failed (got 0x%x, expected 0x%x)",
+				end_p->magic + i, end_p->magic[i], MEM_MAGIC( i ));
+
+			if( end_p->magic + i < entry_ptr )
+			{
+				ecomp_InternalWarning_( "write at %zu bytes before a block of size %zu alloc\'d",
+					(uintptr_t)entry_ptr - (uintptr_t)(end_p->magic + i), start_p->usr_size );
+			}
+			else
+			{
+				ecomp_InternalWarning_( "write at %zu bytes after a block of size %zu alloc\'d",
+					(uintptr_t)(end_p->magic + i) - (uintptr_t)entry_ptr, start_p->usr_size );
+			}
+
+			if( is_fatal )
+				ecomp_InternalError_( "memory check failed" );
+
+			return ECOMP_FALSE;
+		}
+	}
+
+	return ECOMP_TRUE;
 }
 
 void mem_CloseFragment(void * ptr)                                    //   512
 { /* low_pc=0x126d251 */
-	mem_StartBound_t * start_p; /* scope: local */                //   514
-	mem_StartBound_t * prev_p; /* scope: local */                 //   514
-	mem_StartBound_t * next_p; /* scope: local */                 //   514
-	mem_EndBound_t * end_p; /* scope: local */                    //   515
-	mem_Size_t size; /* scope: local */                           //   516
-	mem_Size_t fragment_size; /* scope: local */                  //   516
+	mem_StartBound_t *start_p, *prev_p, *next_p; /* scope: local */ //   514
+	mem_EndBound_t *end_p; /* scope: local */                     //   515
+	mem_Size_t size, fragment_size; /* scope: local */            //   516
 	ecomp_Bool_t is_internal; /* scope: local */                  //   517
 	int i; /* scope: local */                                     //   518
+
+	start_p = (mem_StartBound_t *)ptr;
+	end_p = MEM_ENDBOUND( ptr, start_p->usr_size );
+
+	is_internal = start_p->is_internal;
+	size = start_p->usr_size;
+	fragment_size = MEM_FRAGMENT_SIZE( size );
+
+	prev_p = start_p->prev;
+	next_p = start_p->next;
+
+	start_p->prev = NULL;
+	start_p->next = NULL;
+
+	for( i = 0; i < MEM_MAGIC_SIZE; i++ )
+		end_p->magic[i] = start_p->magic[i] = 0x87654321;
+
+	prev_p->next = next_p;
+	next_p->prev = prev_p;
+
+	ecomp_Assert( mem_IsFragmentListInit );
+	ecomp_Assert( mem_CurArea >= MEM_AREA_UNKNOWN && mem_CurArea < MEM_AREA_LAST );
+	ecomp_Assert( mem_BlockStat[is_internal].nblock > 0 );
+	ecomp_AssertMessage( start_p->area == mem_CurArea,
+			"area mismatch: alloc in '%s', free in '%s'",
+			mem_GetAreaName( start_p->area ), mem_GetAreaName( mem_CurArea ));
+
+	ecomp_Assert( mem_FragmentList[mem_CurArea].nblock > 0 );
+	mem_FragmentList[mem_CurArea].nblock--;
+	mem_BlockStat[is_internal].nblock--;
+	mem_BlockStat[is_internal].usr_size -= size;
+	mem_BlockStat[is_internal].bound_size -= fragment_size;
+
+	ecomp_Assert( mem_AreasSize[mem_CurArea] >= fragment_size );
+	mem_AreasSize[mem_CurArea] -= fragment_size;
 }
 
 void mem_CheckPtr(void * ptr)                                         //   578
-{ /* low_pc=0x126d647 */
+{
+	mem_CheckFragment( MEM_STARTBOUND( ptr ), ECOMP_TRUE );
 }
 
 void * mem_AreaCalloc(mem_Size_t nmemb, mem_Size_t size, mem_Area_t area) //   588
-{ /* low_pc=0x126d66b */
-	void * res; /* scope: local */                                //   593
+{
+	mem_CurArea = area;
+	return mem_Calloc( nmemb, size );
 }
 
 void * mem_AreaMalloc(mem_Size_t size, mem_Area_t area)               //   605
-{ /* low_pc=0x126d6a4 */
-	void * res; /* scope: local */                                //   609
+{
+	mem_CurArea = area;
+	return mem_Malloc( size );
 }
 
 void mem_AreaFree(void * ptr, mem_Area_t area)                        //   621
-{ /* low_pc=0x126d6d2 */
+{
+	mem_CurArea = area;
+	return mem_Free( ptr );
 }
 
 void * mem_AreaRealloc(void * ptr, mem_Size_t size, mem_Area_t area)  //   633
-{ /* low_pc=0x126d6f9 */
-	void * res; /* scope: local */                                //   638
+{
+	mem_CurArea = area;
+	return mem_Realloc( ptr, size );
 }
 
 ecomp_Bool_t mem_CheckMallocLeaksInArea(mem_Area_t area, ecomp_Bool_t is_fatal) //   658
-{ /* low_pc=0x126d732 */
-	mem_StartBound_t * head_p; /* scope: local */                 //   662
-	mem_StartBound_t * start_p; /* scope: local */                //   662
-	mem_StartBound_t * errors_arr; /* scope: local */             //   662
-	mem_Size_t i; /* scope: local */                              //   663
-	mem_Size_t bcount; /* scope: local */                         //   663
-	mem_Size_t total_count; /* scope: local */                    //   663
-	mem_Size_t printed_count; /* scope: local */                  //   663
-	mem_Size_t total_mem; /* scope: local */                      //   663
+{
+	mem_StartBound_t *head_p, *start_p, *errors_arr[16]; /* scope: local */ //   662
+	mem_Size_t i, bcount, total_count, printed_count, total_mem; /* scope: local */ //   663
+
+	memset( errors_arr, 0, sizeof( errors_arr ));
+
+	ecomp_Assert( area >= MEM_AREA_UNKNOWN && area < MEM_AREA_LAST );
+	ecomp_Assert( mem_IsFragmentListInit );
+
+	head_p = &mem_FragmentList[area].start;
+	bcount = mem_FragmentList[area].nblock;
+
+	printed_count = 0;
+	total_count = 0;
+	total_mem = 0;
+	i = 0;
+
+	for( start_p = head_p->prev; start_p != head_p; start_p = start_p->prev )
+	{
+		i++;
+		ecomp_AssertMessage( bcount >= i, "memory blocks list is broken" );
+
+		mem_CheckFragment( start_p, ECOMP_TRUE );
+
+		if( start_p->is_forever )
+			continue;
+
+		total_count++;
+		total_mem += start_p->usr_size;
+		if( total_count <= ECOMP_ARRAYSIZE( errors_arr ))
+		{
+			errors_arr[printed_count++] = start_p;
+		}
+	}
+
+	if( total_count == 0 )
+		return ECOMP_TRUE;
+
+	ecomp_FlushMsgBuffer();
+	ecomp_InternalWarning_( "found %zu not deleted memory blocks in '%s' area",
+		total_count, mem_GetAreaName() );
+
+	for( i = 0; i < printed_count; i++ )
+	{
+		ecomp_InternalWarning_( "[%p] debug num %zu", errors_arr[i] + 1, errors_arr[i]->event_number );
+	}
+
+	if( printed_count < total_count )
+		ecomp_InternalWarning_( "(%zu of %zu blocks shown)", printed_count, total_count );
+
+	if( !mem_TraceMallocEvent )
+		ecomp_InternalWarning_( "use option --let=mem_trace_malloc_event:<debug_num>\n"
+			"to see memory block creation stack" );
+
+	if( is_fatal )
+	{
+		ecomp_InternalError_( "memory leaks detected in '%s' area: %zu bytes", mem_GetAreaName( area ), total_mem );
+	}
+
+	return ECOMP_FALSE;
 }
 
 ecomp_Bool_t mem_CheckMemory(ecomp_Bool_t is_fatal)                   //   799
 { /* low_pc=0x126da3b */
 	ecomp_Bool_t is_ok; /* scope: local */                        //   801
-	mem_StartBound_t * start_p; /* scope: local */                //   804
-	mem_StartBound_t * ptr; /* scope: local */                    //   804
-	mem_Size_t i; /* scope: local */                              //   805
-	mem_Size_t bcount; /* scope: local */                         //   805
+	mem_StartBound_t *start_p, *ptr; /* scope: local */           //   804
+	mem_Size_t i, bcount; /* scope: local */                      //   805
 	int area; /* scope: local */                                  //   806
+
+	is_ok = ECOMP_TRUE;
+	ecomp_Assert( mem_IsFragmentListInit );
+
+	for( area = 0; area < MEM_AREA_LAST; area++ )
+	{
+		i = 0;
+		bcount = mem_FragmentList[area].nblock;
+		for( ptr = mem_FragmentList[area].start.next;
+			  ptr != &mem_FragmentList[area].start;
+			  ptr = ptr->next, i++ )
+		{
+			if( bcount <= i )
+				break;
+
+			if( mem_CheckFragment( ptr, is_fatal ) == 0 )
+			{
+				is_ok = ECOMP_FALSE;
+				break;
+			}
+		}
+
+		if( is_ok && ( bcount != i || ptr != &mem_FragmentList[area].start ))
+			ecomp_InternalWarning_( "memory blocks list is broken" );
+
+		if( !is_ok && is_fatal )
+			ecomp_InternalError_( "mem check failed" );
+	}
+
+	return is_ok;
 }
 
 void mem_Event(void)                                                  //   852
-{ /* low_pc=0x126dba7 */
+{
+	if( mem_TraceMallocEvent && mem_InternalEventCounter == mem_TraceMallocEvent )
+	{
+		fprintf( stderr, "\nmem event %zu:", mem_InternalEventCounter );
+		ui_PrintStackSimple();
+	}
+	mem_IsInternalEvent = ECOMP_FALSE;
+	mem_InternalEventCounter++;
 }
 
 void mem_PrintMemSize(FILE * out_file, mem_Size_t size)               //   876
@@ -200,76 +487,306 @@ void mem_PrintMemSize(FILE * out_file, mem_Size_t size)               //   876
 	double mb; /* scope: local */                                 //   880
 	double gb; /* scope: local */                                 //   880
 	double tb; /* scope: local */                                 //   880
+
+	bytes = size;
+
+	kb = bytes / 1024.0;
+	mb = bytes / 1024.0;
+	gb = bytes / 1024.0;
+	tb = bytes / 1024.0;
+
+	if( tb >= 1.0 )
+		fprintf( out_file, " (%.2f Tb)", tb );
+	else if( gb >= 1.0 )
+		fprintf( out_file, " (%.2f Gb)", gb );
+	else if( mb >= 1.0 )
+		fprintf( out_file, " (%.2f Mb)", mb );
+	else if( kb >= 1.0 )
+		fprintf( out_file, " (%.2f Kb)", kb );
+	else
+		fprintf( out_file, "%zu bytes", size );
 }
 
 void mem_PrintMaxUsage(void)                                          //   913
 { /* low_pc=0x126ddb8 */
 	FILE * out_file; /* scope: local */                           //   915
+
+	if( !mem_IsTraceMaxUsage )
+		return;
+
+	if( mem_MaxUsageFile == NULL || !strcmp( mem_MaxUsageFile, "stdout" ))
+	{
+		out_file = stdout;
+	}
+	else
+	{
+		out_file = fopen( mem_MaxUsageFile, "w" );
+		if( !out_file )
+		{
+			ecomp_InternalWarning_( "failed to output file --max_mem=%s", mem_MaxUsageFile );
+			out_file = stdout;
+		}
+	}
+
+	fflush( NULL );
+	fprintf( out_file, "max memory usage " );
+	mem_PrintMemSize( out_file, mem_MaxUsage );
+	fprintf( out_file, "\ntotal allocated ");
+	mem_PrintMemSize( out_file, mem_TotalMallocSize );
+	fprintf( out_file, "%zu allocations\n", mem_MallocsNum );
+	fprintf( out_file, "\nphase %s\n", mem_MaxUsagePhase ? mem_MaxUsagePhase : "UNKNOWN" );
+	fprintf( out_file, "proc %s\n", mem_MaxUsageProcName ? mem_MaxUsageProcName : "INTERPROC" );
+
+	fprintf( out_file, "\nmax memory: %zu samples in %li usec (%.3f s)\n"
+				"pools stat: %zu passes in %li usec (%.3f s)\n\n\n",
+				mem_MaxUsageSamples, mem_MaxUsageTime, mem_MaxUsageTime * 1e-06,
+				mem_PoolsStatPasses, mem_PoolsStatTime, mem_PoolsStatTime * 1e-06 );
+
+	fflush( out_file );
+	if( out_file != stdout )
+		fclose( stdout );
 }
 
 const char  * mem_SkipStatItem(const char  * str)                     //   998
-{ /* low_pc=0x126e047 */
+{
 	const char  * ptr; /* scope: local */                         //  1000
+
+	for( ptr = str; *ptr != '\0'; ptr++ )
+	{
+		if( isspace( *ptr ))
+			break;
+	}
+
+	for( ; !isspace( *ptr ); ptr++ );
+
+	return ptr;
 }
 
 mem_Size_t mem_GetCurMemUsage(void)                                   //  1033
-{ /* low_pc=0x126e0a4 */
+{
 	FILE * stat_file; /* scope: local */                          //  1035
 	const char  * ptr; /* scope: local */                         //  1036
 	mem_Size_t mem_usage; /* scope: local */                      //  1037
-	struct timeval time_beg_s; /* scope: local */                 //  1038
-	struct timeval time_end_s; /* scope: local */                 //  1038
+	struct timeval time_beg_s, time_end_s; /* scope: local */                 //  1038
 	int64_t func_time; /* scope: local */                         //  1039
 	int i; /* scope: local */                                     //  1040
-	pid_t my_pid; /* scope: global */                             //  1042
-	char proc_file_name; /* scope: global */                      //  1043
-	char buff; /* scope: global */                                //  1044
+
+	static pid_t my_pid; /* scope: global */                             //  1042
+	static char proc_file_name[32]; /* scope: global */                      //  1043
+	static char buff[1000]; /* scope: global */                                //  1044
+
+	mem_usage = 0;
+	gettimeofday( &time_beg_s, NULL );
+	if( !my_pid )
+	{
+		my_pid = getpid();
+		ecomp_Assert( my_pid != 0 );
+
+		str_Printf( proc_file_name, sizeof( proc_file_name ), "/proc/%d/stat", my_pid );
+	}
+
+	stat_file = fopen( proc_file_name, "r" );
+	ecomp_Assert( stat_file != NULL );
+	ptr = fgets( buff, sizeof( buff ) - 1, stat_file );
+	ecomp_Assert( ptr != NULL );
+	fclose( stat_file );
+
+	while( isspace( *ptr ) )
+		ptr++;
+
+	for( i = 0; i < 22; i++ )
+		ptr = mem_SkipStatItem( ptr );
+
+	ecomp_Assert( isdigit( *ptr ));
+
+	sscanf( ptr, "%lu", &mem_usage );
+	gettimeofday( &time_end_s, NULL );
+	i = tools_CountTimeInterval( &time_beg_s, &time_end_s );
+	mem_MaxUsageTime += i;
+
+	return mem_usage;
+
 }
 
-static pid_t                      my_pid; /* line: 1042, size: 4, scope: global */
-
-static char                       proc_file_name[32]; /* line: 1043, size: 32, scope: global */
-
-static char                       buff[1000]; /* line: 1044, size: 1000, scope: global */
-
 void mem_SetCurrentPhaseAndProcName(void)                             //  1108
-{ /* low_pc=0x126e2a6 */
+{
 	const char  * phase; /* scope: local */                       //  1110
 	const char  * proc_name; /* scope: local */                   //  1110
+	const char *s;
+
+	s = ecomp_GetCurrentPhaseSuffix();
+
+	if( !s )
+	{
+		if( mem_MaxUsagePhase )
+		{
+			free( mem_MaxUsagePhase );
+			mem_MaxUsagePhase = NULL;
+		}
+	}
+	else if( mem_MaxUsagePhase == NULL )
+	{
+		mem_MaxUsagePhase = strdup( s );
+	}
+	else if( strcmp( mem_MaxUsagePhase, s ))
+	{
+		free( mem_MaxUsagePhase );
+		mem_MaxUsagePhase = strdup( s );
+	}
+
+	s = ecomp_GetCurrentProcName();
+
+	if( !s )
+	{
+		if( mem_MaxUsageProcName )
+		{
+			free( mem_MaxUsageProcName );
+			mem_MaxUsageProcName = NULL;
+		}
+	}
+	else if( mem_MaxUsageProcName == NULL )
+	{
+		mem_MaxUsageProcName = strdup( s );
+	}
+	else if( strcmp( mem_MaxUsageProcName, s ))
+	{
+		free( mem_MaxUsageProcName );
+		mem_MaxUsageProcName = strdup( s );
+	}
 }
 
 void mem_StatMaxMem(mem_Size_t size)                                  //  1174
-{ /* low_pc=0x126e3db */
+{
 	mem_Size_t cur_usage; /* scope: local */                      //  1176
-	int collect_skip_num; /* scope: global */                     //  1178
-	mem_Size_t alloc_delta; /* scope: global */                   //  1179
-	mem_Size_t delta_limit; /* scope: global */                   //  1180
-	mem_Size_t samples_limit; /* scope: global */                 //  1181
+	static int collect_skip_num; /* scope: global */                     //  1178
+	static  mem_Size_t alloc_delta; /* scope: global */                   //  1179
+	static  mem_Size_t delta_limit = 20000; /* scope: global */                   //  1180
+	static  mem_Size_t samples_limit = 4; /* scope: global */                 //  1181
+
+	alloc_delta += size;
+	mem_MallocsNum++;
+
+	if( delta_limit < alloc_delta )
+	{
+		mem_TotalMallocSize = alloc_delta;
+		alloc_delta = 0;
+
+		cur_usage = mem_GetCurMemUsage();
+
+		if( mem_MaxUsage < cur_usage )
+		{
+			collect_skip_num++;
+
+			mem_MaxUsage = cur_usage;
+
+			if( collect_skip_num > 8 )
+			{
+				collect_skip_num = 0;
+				mem_SetCurrentPhaseAndProcName();
+				mem_CollectPoolsStat( &mem_MaxUsageStat_s );
+				mem_PoolsStatPasses++;
+			}
+		}
+
+		mem_MaxUsageSamples++;
+		if( samples_limit < mem_MaxUsageSamples )
+		{
+			samples_limit *= 2;
+			delta_limit *= 2;
+			if( delta_limit > (1 << 25) - 1 )
+			{
+				samples_limit = -1;
+			}
+		}
+	}
 }
 
-static int                        collect_skip_num; /* line: 1178, size: 4, scope: global */
+void *mem_Calloc(mem_Size_t nmemb, mem_Size_t size)                  //  1257
+{
+	void * res, *ptr; /* scope: local */                                //  1260
 
-static mem_Size_t                 alloc_delta; /* line: 1179, size: 8, scope: global */
+	ptr = calloc( 1, MEM_FRAGMENT_SIZE( nmemb * size ));
 
-static mem_Size_t                 delta_limit; /* line: 1180, size: 8, scope: global */
+	if( !ptr )
+		ecomp_InternalError_( "not enough memory" );
 
-static mem_Size_t                 samples_limit; /* line: 1181, size: 8, scope: global */
+	if( ( (mem_Size_t)ptr & 0xf ) != 0 )
+		ecomp_InternalError_( "адрес не выровнен" ); // NOTE: KOI8R
 
-void * mem_Calloc(mem_Size_t nmemb, mem_Size_t size)                  //  1257
-{ /* low_pc=0x126e526 */
-	void * res; /* scope: local */                                //  1260
+	res = mem_InitFragment( ptr, size );
+
+	mem_CurArea = MEM_AREA_UNKNOWN;
+	if( mem_IsTraceMalloc )
+	{
+		printf( "%10zu: %s_Calloc  [%p] %zu bytes\n",
+			  mem_InternalEventCounter,
+			  mem_IsInternalEvent ? "mem" : "usr",
+			  res,
+			  size );
+	}
+	mem_Event();
+
+	if( mem_IsTraceMaxUsage )
+		mem_StatMaxMem( size );
+
+	return res;
 }
 
 void * mem_Malloc(mem_Size_t size)                                    //  1320
-{ /* low_pc=0x126e655 */
-	void * res; /* scope: local */                                //  1322
+{
+	void *res, *ptr; /* scope: local */                                //  1322
+
+	ptr = malloc( MEM_FRAGMENT_SIZE( size ));
+
+	if( !ptr )
+		ecomp_InternalError_( "not enough memory" );
+
+	if( ( (mem_Size_t)ptr & 0xf ) != 0 )
+		ecomp_InternalError_( "адрес не выровнен" ); // NOTE: KOI8R
+
+	res = mem_InitFragment( ptr, size );
+
+	mem_CurArea = MEM_AREA_UNKNOWN;
+	if( mem_IsTraceMalloc )
+	{
+		printf( "%10zu: %s_Malloc  [%p] %zu bytes\n",
+			  mem_InternalEventCounter,
+			  mem_IsInternalEvent ? "mem" : "usr",
+			  res,
+			  size );
+	}
+	mem_Event();
+
+	if( mem_IsTraceMaxUsage )
+		mem_StatMaxMem( size );
+
+	return res;
 }
 
 void mem_Free(void * ptr)                                             //  1368
-{ /* low_pc=0x126e762 */
-	{ /* mem_Free+0x13 */
+{
+	if( ptr )
+	{
 		mem_StartBound_t * start_p; /* scope: local */        //  1375
-	} /* lexblock size=92 */
+		start_p = MEM_STARTBOUND( ptr );
+
+		mem_CheckFragment( start_p, ECOMP_TRUE );
+		if( mem_BoolOptions[MEM_CLEAR_FREE] )
+			memset( ptr, 0, start_p->usr_size );
+		mem_CloseFragment( start_p );
+		free( start_p );
+	}
+
+	mem_CurArea = MEM_AREA_UNKNOWN;
+	if( mem_IsTraceMalloc )
+	{
+		printf( "%10zu: %s_Free    [%p]\n",
+			  mem_InternalEventCounter,
+			  mem_IsInternalEvent ? "mem" : "usr",
+			  ptr );
+	}
+	mem_Event();
+
 }
 
 void * mem_Realloc(void * ptr, mem_Size_t size)                       //  1410
@@ -277,20 +794,74 @@ void * mem_Realloc(void * ptr, mem_Size_t size)                       //  1410
 	void * res; /* scope: local */                                //  1413
 	mem_StartBound_t * start_p; /* scope: local */                //  1433
 	ecomp_Bool_t is_forever; /* scope: local */                   //  1434
+
+	if( ptr == NULL )
+	{
+		is_forever = ECOMP_FALSE;
+		res = realloc( NULL, MEM_ALIGN_SIZE( size ));
+	}
+	else
+	{
+		start_p = MEM_STARTBOUND( ptr );
+		mem_CheckFragment( start_p, ECOMP_TRUE );
+		is_forever = start_p->is_forever;
+		mem_CloseFragment( start_p );
+		res = realloc( start_p, MEM_ALIGN_SIZE( size ));
+	}
+
+	if( !res )
+		ecomp_InternalError_( "not enough memory" );
+
+	if( ( (mem_Size_t)res & 0xf ) != 0 )
+		ecomp_InternalError_( "адрес не выровнен" ); // NOTE: KOI8R
+
+	res = mem_InitFragment( res, size );
+
+	MEM_STARTBOUND( res )->is_forever = is_forever;
+
+	mem_CurArea = MEM_AREA_UNKNOWN;
+	if( mem_IsTraceMalloc )
+	{
+		printf( "%10zu: %s_Realloc [%p] %zu bytes\n",
+			  mem_InternalEventCounter,
+			  mem_IsInternalEvent ? "mem" : "usr",
+			  res,
+			  size );
+	}
+	mem_Event();
+
+	if( mem_IsTraceMaxUsage )
+		mem_StatMaxMem( size );
+
+	return res;
 }
 
 void mem_SetChunkLiveForever(void * ptr)                              //  1483
-{ /* low_pc=0x126e9df */
+{
 	mem_StartBound_t * start_p; /* scope: local */                //  1485
+
+	start_p = MEM_STARTBOUND( ptr );
+	mem_CheckFragment( start_p, ECOMP_TRUE );
+	start_p->is_forever = 1;
 }
 
 void mem_SetMallocTrace(ecomp_Bool_t val)                             //  1499
-{ /* low_pc=0x126ea19 */
+{
+	mem_IsTraceMalloc = val;
 }
 
-char * mem_StrDup(const char  * str)                                  //  1517
-{ /* low_pc=0x126ea2c */
+char *mem_StrDup(const char *str)                                  //  1517
+{
 	char * str_copy; /* scope: local */                           //  1519
 	mem_Size_t len; /* scope: local */                            //  1520
+
+	if( !str )
+		return NULL;
+
+	len = strlen( str );
+	str_copy = mem_Malloc( len + 1 );
+	memcpy( str_copy, str, len + 1 );
+
+	return str_copy;
 }
 
