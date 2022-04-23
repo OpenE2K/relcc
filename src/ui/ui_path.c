@@ -12,96 +12,170 @@
 #include "ui/ui_colorize.h"
 #include "ui/ui_exec.h"
 #include "tools/buff_iface.h"
+#include "ecomp_utils.h"
+
 ui_PathDescr_t ui_CreateSubArchDescr(ui_ModePtr_t mode_ptr)           //    34
-{ /* low_pc=0x127e0ff */
+{
 	ui_PathDescr_t descr; /* scope: local */                      //    36
+
+	descr.mode_ptr = mode_ptr;
+
+	return descr;
 }
 
-static const char  *              ui_HomeDir; /* line: 44, size: 8, scope: global */
+static const char *ui_HomeDir; /* line: 44, size: 8, scope: global */
 
 void ui_SetHomeDir(const char  * home_dir)                            //    51
-{ /* low_pc=0x127e111 */
+{
+	ecomp_Assert( ui_HomeDir == NULL );
+	ecomp_Assert( home_dir != NULL );
+
+	ui_HomeDir = ui_Strdup(home_dir);
 }
 
-const char  * ui_GetHomeDir(void)                                     //    63
-{ /* low_pc=0x127e18e */
+const char *ui_GetHomeDir(void)                                     //    63
+{
+	ecomp_Assert( ui_HomeDir != NULL );
+
+	return ui_HomeDir;
 }
 
-static const char  *              ui_InternalDir; /* line: 71, size: 8, scope: global */
+static const char *ui_InternalDir; /* line: 71, size: 8, scope: global */
 
-void ui_SetInternalDir(const char  * internal_dir)                    //    77
-{ /* low_pc=0x127e1cb */
+void ui_SetInternalDir(const char *internal_dir)                    //    77
+{
+	ecomp_Assert( ui_InternalDir == NULL );
+	ecomp_Assert( internal_dir != NULL );
+
+	ui_InternalDir = ui_Strdup(internal_dir);
 }
 
-const char  * ui_GetInternalDir(void)                                 //    89
-{ /* low_pc=0x127e248 */
+const char *ui_GetInternalDir(void)                                 //    89
+{
+	ecomp_Assert( ui_InternalDir != NULL );
+
+	return ui_InternalDir;
 }
 
 void ui_VerboseInternalDir(void)                                      //   100
-{ /* low_pc=0x127e285 */
+{
+	const char *msg;
+
+	if (ui_IsLangEnglish == 0)
+		msg = "Внутренний каталог компилятора: %s\n";
+	else
+		msg = "Internal dir: %s\n";
+
+	ui_UserVerbose(msg, ui_GetInternalDir());
 }
 
-const char  * ui_GetFullInternalPathByLDir(const char  * ldir)        //   115
-{ /* low_pc=0x127e2c1 */
+const char *ui_GetFullInternalPathByLDir(const char *ldir)        //   115
+{
+	const char *dir;
+
+	dir = ui_GetInternalDir();
+	dir = ui_MallocSprintf("%s/%s",dir,ldir);
+	return dir;
 }
 
-const char  * ui_GetInternalBinDir(void)                              //   124
-{ /* low_pc=0x127e2f2 */
-	const char  * ui_InternalBinDir; /* scope: global */          //   126
+const char *ui_GetInternalBinDir(void)                              //   124
+{
+	static const char *ui_InternalBinDir; /* scope: global */          //   126
+
+	if( !ui_InternalBinDir )
+		ui_InternalBinDir = ui_GetFullInternalPathByLDir( "bin" );
+
+	return ui_InternalBinDir;
 }
 
-static const char  *              ui_InternalBinDir; /* line: 126, size: 8, scope: global */
+const char *ui_GetInternalIncludeDir(ui_PathDescr_t descr)          //   140
+{
+	static const char *ui_InternalIncludeDir; /* scope: global */      //   142
 
-const char  * ui_GetInternalIncludeDir(ui_PathDescr_t descr)          //   140
-{ /* low_pc=0x127e31e */
-	const char  * ui_InternalIncludeDir; /* scope: global */      //   142
+	if( !ui_InternalIncludeDir )
+		ui_InternalIncludeDir = ui_GetFullInternalPathByLDir( "include" );
+
+	return ui_InternalIncludeDir;
 }
 
-static const char  *              ui_InternalIncludeDir; /* line: 142, size: 8, scope: global */
+const char *ui_GetInternalIncludeCplusplusDir(ui_PathDescr_t descr) //   156
+{
+	static const char *ui_InternalIncludeCplusplusDir; /* scope: global */   //   158
 
-const char  * ui_GetInternalIncludeCplusplusDir(ui_PathDescr_t descr) //   156
-{ /* low_pc=0x127e351 */
-	const char  * ui_InternalIncludeCplusplusDir; /* scope: global */   //   158
+	if( !ui_InternalIncludeCplusplusDir )
+		ui_InternalIncludeCplusplusDir = ui_GetFullInternalPathByLDir( "include/c++/include" );
+
+	return ui_InternalIncludeCplusplusDir;
 }
 
-static const char  *              ui_InternalIncludeCplusplusDir; /* line: 158, size: 8, scope: global */
+const char *ui_GetInternalIncludeLibstdcppDir(void)                 //   172
+{
+	static const char *ui_InternalIncludeLibstdcppDir; /* scope: global */   //   174
 
-const char  * ui_GetInternalIncludeLibstdcppDir(void)                 //   172
-{ /* low_pc=0x127e384 */
-	const char  * ui_InternalIncludeLibstdcppDir; /* scope: global */   //   174
+	if( !ui_InternalIncludeLibstdcppDir )
+		ui_InternalIncludeLibstdcppDir = ui_GetFullInternalPathByLDir( "include/c++/g++-v3" );
+
+	return ui_InternalIncludeLibstdcppDir;
 }
 
-static const char  *              ui_InternalIncludeLibstdcppDir; /* line: 174, size: 8, scope: global */
+const char *ui_GetInternalFFEModDir(void)                           //   190
+{
+	static const char *ui_InternalFFEModDir; /* scope: global */       //   192
 
-const char  * ui_GetInternalFFEModDir(void)                           //   190
-{ /* low_pc=0x127e3b0 */
-	const char  * ui_InternalFFEModDir; /* scope: global */       //   192
+	if( !ui_InternalFFEModDir )
+		ui_InternalFFEModDir = ui_GetFullInternalPathByLDir( "mod" );
+
+	return ui_InternalFFEModDir;
 }
 
-static const char  *              ui_InternalFFEModDir; /* line: 192, size: 8, scope: global */
-
-const char  * ui_GetInternalLibDir(ui_PathDescr_t descr)              //   210
-{ /* low_pc=0x127e3dc */
-	const char  * ui_InternalLibDir; /* scope: global */          //   212
-	{ /* ui_GetInternalLibDir+0x17 */
+const char *ui_GetInternalLibDir(ui_PathDescr_t descr)              //   210
+{
+	static const char *ui_InternalLibDir; /* scope: global */          //   212
+	{
 		const char  * ldir; /* scope: local */                //   216
-	} /* lexblock size=81 */
+		switch( descr.mode_ptr )
+		{
+		case UI_MODE_PTR32:
+			ldir = "lib32"; break;
+		case UI_MODE_PTR64:
+			ldir = "lib64"; break;
+		case UI_MODE_PTR128:
+			ldir = "lib128"; break;
+		default:
+			ldir = "_fake_internal_lib_dir";
+		}
+
+		ui_InternalLibDir = ui_GetFullInternalPathByLDir( ldir );
+	}
+
+	return ui_InternalLibDir;
 }
 
-static const char  *              ui_InternalLibDir; /* line: 212, size: 8, scope: global */
-
-static const char  *              ui_SysFSDir; /* line: 307, size: 8, scope: global */
+static const char *ui_SysFSDir; /* line: 307, size: 8, scope: global */
 
 void ui_SetSysFSDir(const char  * fs_dir)                             //   313
-{ /* low_pc=0x127e44d */
+{
+	ecomp_Assert( ui_SysFSDir == NULL );
+	ecomp_Assert( fs_dir != NULL );
+
+	ui_SysFSDir = ui_Strdup(fs_dir);
 }
 
-const char  * ui_GetSysFSDir(void)                                    //   325
-{ /* low_pc=0x127e4ca */
+const char *ui_GetSysFSDir(void)                                    //   325
+{
+	ecomp_Assert( ui_SysFSDir != NULL );
+
+	return ui_SysFSDir;
 }
 
-const char  * ui_GetFullFSPath(const char  * path)                    //   336
-{ /* low_pc=0x127e507 */
+const char *ui_GetFullFSPath(const char  * path)                    //   336
+{
+	const char *dir;
+
+	dir = ui_GetSysFSDir();
+	dir = ui_MallocSprintf( "%s%s", dir, path );
+
+	return dir;
 }
 
 static const ui_SysPaths          ui_SysPaths_e2k_linux_32; /* line: 407, size: 112, scope: global */
@@ -110,7 +184,24 @@ static const ui_SysPaths          ui_SysPaths_e2k_linux_64; /* line: 415, size: 
 
 static const ui_SysPaths          ui_SysPaths_e2k_linux_128; /* line: 423, size: 112, scope: global */
 
-const ui_SysPaths  * ui_GetDescrSysPaths(ui_PathDescr_t descr)        //   526
-{ /* low_pc=0x127e538 */
+const ui_SysPaths *ui_GetDescrSysPaths(ui_PathDescr_t descr)        //   526
+{
+	const ui_SysPaths *res;
+
+	if( descr.mode_ptr == UI_MODE_PTR32 )
+	{
+		res = &ui_SysPaths_e2k_linux_32;
+	}
+	else if( descr.mode_ptr == UI_MODE_PTR64 )
+	{
+		res = &ui_SysPaths_e2k_linux_64;
+	}
+	else
+	{
+		ecomp_Assert( descr.mode_ptr == UI_MODE_PTR128 );
+		res = &ui_SysPaths_e2k_linux_128;
+	}
+
+	return res;
 }
 

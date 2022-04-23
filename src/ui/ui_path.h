@@ -31,3 +31,19 @@ typedef struct {
 	ui_PathList_t              include_paths;        /*    64    48 */
 } ui_SysPaths; /* size: 112 */
 
+ui_PathDescr_t ui_CreateSubArchDescr(ui_ModePtr_t mode_ptr);
+void ui_SetHomeDir(const char *home_dir);
+const char *ui_GetHomeDir( void );
+void ui_SetInternalDir(const char *home_dir);
+const char *ui_GetInternalDir( void );
+void ui_VerboseInternalDir( void );
+void ui_SetSysFSDir(const char *fs_dir);
+const char *ui_GetFullFSPath(const char  * path);
+const char *ui_GetSysFSDir(void);
+const char *ui_GetInternalBinDir(void);
+const char *ui_GetInternalIncludeDir(ui_PathDescr_t descr);
+const char *ui_GetInternalIncludeCplusplusDir(ui_PathDescr_t descr);
+const char *ui_GetInternalIncludeLibstdcppDir(void);
+const char *ui_GetInternalFFEModDir(void);
+const char *ui_GetInternalLibDir(ui_PathDescr_t descr);
+const ui_SysPaths *ui_GetDescrSysPaths(ui_PathDescr_t descr);
