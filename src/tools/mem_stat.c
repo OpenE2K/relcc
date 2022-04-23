@@ -2,6 +2,9 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
+#include <sys/time.h>
+#include <unistd.h>
 #include "ecomp_types.h"
 #include "ecomp_options.h"
 #include "tools/mem_iface.h"
@@ -10,29 +13,147 @@
 #include "tools/mem_real.h"
 static ecomp_Bool_t               mem_CheckPointsEnabled; /* line: 33, size: 4, scope: global */
 
-static const char  *              mem_AreaNames[81]; /* line: 38, size: 648, scope: global */
+static const char  *              mem_AreaNames[MEM_FICT_AREA_WHOLE]; /* line: 38, size: 648, scope: global */
 
 void mem_InitAreaNames(void)                                          //    44
-{ /* low_pc=0x12722be */
+{
+	mem_AreaNames[0] = "unknown";
+	mem_AreaNames[1] = "ir";
+	mem_AreaNames[2] = "module";
+	mem_AreaNames[3] = "proc";
+	mem_AreaNames[4] = "graph";
+	mem_AreaNames[5] = "cfg";
+	mem_AreaNames[6] = "numbering";
+	mem_AreaNames[7] = "class";
+	mem_AreaNames[8] = "symname";
+	mem_AreaNames[9] = "obj";
+	mem_AreaNames[10] = "const";
+	mem_AreaNames[11] = "eir_oper";
+	mem_AreaNames[12] = "eir_attr";
+	mem_AreaNames[13] = "ire2k_oper";
+	mem_AreaNames[14] = "ire2k_attr";
+	mem_AreaNames[15] = "ire2k_arg";
+	mem_AreaNames[16] = "layout";
+	mem_AreaNames[17] = "symtab";
+	mem_AreaNames[18] = "call_sign";
+	mem_AreaNames[19] = "psf";
+	mem_AreaNames[20] = "wi";
+	mem_AreaNames[21] = "nv";
+	mem_AreaNames[22] = "lextree";
+	mem_AreaNames[23] = "dug";
+	mem_AreaNames[24] = "dfg";
+	mem_AreaNames[25] = "dep";
+	mem_AreaNames[26] = "bdd";
+	mem_AreaNames[28] = "string";
+	mem_AreaNames[29] = "sparseset";
+	mem_AreaNames[30] = "pair";
+	mem_AreaNames[31] = "stack";
+	mem_AreaNames[32] = "hash";
+	mem_AreaNames[33] = "fset";
+	mem_AreaNames[34] = "usr_list";
+	mem_AreaNames[35] = "std_list";
+	mem_AreaNames[36] = "slist";
+	mem_AreaNames[37] = "bitv_pool";
+	mem_AreaNames[38] = "locset";
+	mem_AreaNames[39] = "btree";
+	mem_AreaNames[40] = "eir";
+	mem_AreaNames[41] = "ire2k";
+	mem_AreaNames[42] = "cfa";
+	mem_AreaNames[43] = "dfa";
+	mem_AreaNames[44] = "lda";
+	mem_AreaNames[45] = "ipa";
+	mem_AreaNames[46] = "ipa_add";
+	mem_AreaNames[47] = "cda";
+	mem_AreaNames[48] = "pca";
+	mem_AreaNames[49] = "dfo";
+	mem_AreaNames[50] = "lpo";
+	mem_AreaNames[51] = "pco";
+	mem_AreaNames[52] = "profile";
+	mem_AreaNames[53] = "cge2kopt";
+	mem_AreaNames[54] = "ral";
+	mem_AreaNames[55] = "scr";
+	mem_AreaNames[56] = "prop";
+	mem_AreaNames[57] = "trace";
+	mem_AreaNames[58] = "dbg";
+	mem_AreaNames[59] = "opt";
+	mem_AreaNames[60] = "gsh";
+	mem_AreaNames[61] = "ipo";
+	mem_AreaNames[62] = "ui";
+	mem_AreaNames[63] = "vect";
+	mem_AreaNames[64] = "gos";
+	mem_AreaNames[65] = "asm";
+	mem_AreaNames[66] = "eir2e2k";
+	mem_AreaNames[67] = "mco";
+	mem_AreaNames[68] = "cge2k";
+	mem_AreaNames[69] = "opt_report";
+	mem_AreaNames[70] = "log";
+	mem_AreaNames[71] = "pad";
+	mem_AreaNames[72] = "mem_man";
+	mem_AreaNames[73] = "autopools";
+	mem_AreaNames[74] = "pool_units";
+	mem_AreaNames[75] = "array";
+	mem_AreaNames[76] = "bitv";
+	mem_AreaNames[77] = "buff";
+	mem_AreaNames[78] = "bstream";
+	mem_AreaNames[79] = "hash_vect";
 }
 
-const char  * mem_GetAreaName(mem_Area_t area)                        //   143
-{ /* low_pc=0x1272717 */
+const char *mem_GetAreaName(mem_Area_t area)                        //   143
+{
+	if( (int)area < 0 || (int)area > MEM_AREA_LAST )
+		return NULL;
+
+	return area == MEM_AREA_LAST ? "total" : mem_AreaNames[(int)area];
 }
 
 mem_Size_t mem_GetPoolMemSize(mem_Pool_t * pool_p)                    //   168
-{ /* low_pc=0x127275d */
+{
 	mem_FixedUnit_t * fixed_unit_p; /* scope: local */            //   170
 	mem_FloatUnit_t * float_unit_p; /* scope: local */            //   171
 	mem_Size_t size; /* scope: local */                           //   172
+
+	size = sizeof( mem_Pool_t );
+
+	if( pool_p->is_metapool )
+	{
+		for( float_unit_p = pool_p->unit_list;
+			  float_unit_p;
+			  float_unit_p = float_unit_p->next_unit )
+		{
+			size = size + float_unit_p->unit_size;
+		}
+	}
+	else
+	{
+		for( fixed_unit_p = pool_p->unit_list;
+			  fixed_unit_p;
+			  fixed_unit_p = fixed_unit_p->next_unit )
+		{
+			size = size + fixed_unit_p->unit_size;
+		}
+	}
+
+	return size;
 }
 
 mem_Size_t mem_GetPoolMemSizeWithAttr(mem_Pool_t * pool_p)            //   204
-{ /* low_pc=0x12727d8 */
+{
 	mem_Size_t size; /* scope: local */                           //   206
-	mem_Pool_t * attr_pool_p; /* scope: local */                  //   207
-	int attr; /* scope: local */                                  //   208
-	int attr_num; /* scope: local */                              //   208
+	mem_Pool_t *attr_pool_p; /* scope: local */                  //   207
+	int attr, attr_num; /* scope: local */                        //   208
+
+	size = mem_GetPoolMemSize( pool_p );
+	attr_num = pool_p->max_attr_number;
+	for( attr = 0; attr < attr_num; attr++ )
+	{
+		attr_pool_p = mem_GetPoolAttrPoolP( pool_p, attr );
+		if( attr_pool_p )
+		{
+			size += mem_GetPoolMemSize( attr_pool_p );
+		}
+	}
+
+	return size;
 }
 
 void mem_CollectPoolsStat(mem_PoolStat_t * stat_p)                    //   231
@@ -41,56 +162,214 @@ void mem_CollectPoolsStat(mem_PoolStat_t * stat_p)                    //   231
 	mem_Search_t search_s; /* scope: local */                     //   234
 	mem_Pool_ref pool; /* scope: local */                         //   235
 	mem_Pool_t * pool_p; /* scope: local */                       //   236
-	mem_AreaStat_t * area_stat_p; /* scope: local */              //   237
-	mem_AreaStat_t * whole_stat_p; /* scope: local */             //   237
-	int i; /* scope: local */                                     //   238
-	int area; /* scope: local */                                  //   238
-	struct timeval time_beg_s; /* scope: local */                 //   241
-	struct timeval time_end_s; /* scope: local */                 //   241
-	int64_t func_time; /* scope: local */                         //   242
+	mem_AreaStat_t *area_stat_p, *whole_stat_p; /* scope: local *///   237
+	int i, area; /* scope: local */                               //   238
+	struct timeval time_beg_s, time_end_s; /* scope: local */     //   241
+
+	gettimeofday( &time_beg_s, NULL );
+	memset( stat_p, 0, sizeof( *stat_p ));
+
+	for( i = 0; i < 4; i++ )
+	{
+		ref = mem_FirstEntry( mem_MetaPool_p[i], &search_s );
+
+		while( 1 )
+		{
+			pool = mem_IsNotRefNull( ref ) ? ref : mem_MetaPool_p[i];
+
+			pool_p = mem_GetPoolPtr( pool );
+			area = pool_p->pool_area;
+			if( area >= MEM_AREA_LAST )
+				area = 0;
+
+			area_stat_p = &stat_p->area_stat[area];
+
+			area_stat_p->pool_number++;
+
+			if( pool_p->is_attr_pool )
+			{
+				area_stat_p->entry_number += pool_p->num_entries;
+				area_stat_p->alloc_number += pool_p->num_alloc;
+			}
+			area_stat_p->user_size += pool_p->num_entries * pool_p->entry_size;
+			area_stat_p->size += mem_GetPoolMemSize( pool_p );
+
+			if( mem_IsRefNull( ref ))
+				break;
+
+			ref = mem_NextEntry( &search_s );
+		}
+	}
+
+	whole_stat_p = &stat_p->whole_stat;
+	whole_stat_p->area = MEM_AREA_LAST;
+
+	for( area = 0; area < MEM_AREA_LAST; area++ )
+	{
+		area_stat_p = &stat_p->area_stat[area];
+		area_stat_p->area = area;
+
+		whole_stat_p->size += area_stat_p->size;
+		whole_stat_p->user_size += area_stat_p->user_size;
+		whole_stat_p->pool_number += area_stat_p->pool_number;
+		whole_stat_p->entry_number += area_stat_p->entry_number;
+		whole_stat_p->alloc_number += area_stat_p->alloc_number;
+	}
+	gettimeofday( &time_end_s, NULL );
+	mem_PoolsStatTime += tools_CountTimeInterval( &time_beg_s, &time_end_s );
 }
 
 void mem_SetCheckPoint(mem_PoolStat_t * chp_p)                        //   344
-{ /* low_pc=0x1272b49 */
+{
+	if( mem_CheckPointsEnabled )
+		mem_CollectPoolsStat( chp_p );
 }
 
 void mem_AssertSameState(mem_PoolStat_t * chp_p, mem_Area_t area)     //   359
-{ /* low_pc=0x1272b6e */
+{
 	mem_PoolStat_t pools_stat_s; /* scope: local */               //   363
-	mem_AreaStat_t * stat_p; /* scope: local */                   //   364
-	mem_AreaStat_t * check_stat_p; /* scope: local */             //   364
-	ecomp_Bool_t is_error; /* scope: local */                     //   365
+	mem_AreaStat_t *stat_p, *check_stat_p; /* scope: local */     //   364
+	ecomp_Bool_t is_error = ECOMP_FALSE; /* scope: local */       //   365
+
+	if( !mem_CheckPointsEnabled )
+		return;
+
+	ecomp_AssertMessage( area > MEM_AREA_UNKNOWN && area < MEM_AREA_LAST,
+		"mem_AssertSameState: invalid area %d", area );
+
+	mem_CollectPoolsStat( &pools_stat_s );
+
+	check_stat_p = &chp_p->area_stat[area];
+	stat_p = &pools_stat_s.area_stat[area];
+
+	if( check_stat_p->pool_number != stat_p->pool_number )
+	{
+		ecomp_InternalWarning_( "numbers of pools changed from %zu to %zu",
+			check_stat_p->pool_number,
+			stat_p->pool_number );
+		is_error = ECOMP_TRUE;
+	}
+
+	if( check_stat_p->entry_number != stat_p->entry_number )
+	{
+		ecomp_InternalWarning_( "number of entries changed from %zu to %zu",
+			check_stat_p->entry_number,
+			stat_p->entry_number );
+		is_error = ECOMP_TRUE;
+	}
+
+	if( check_stat_p->user_size != stat_p->user_size )
+	{
+		ecomp_InternalWarning_( "user size changed from %zu to %zu",
+			check_stat_p->user_size,
+			stat_p->user_size );
+		is_error = ECOMP_TRUE;
+	}
+
+	if( is_error )
+		ecomp_InternalError_( "memory leaks found in '%s' area", mem_GetAreaName( area ));
 }
 
 ecomp_Bool_t mem_SetCheckStatus(ecomp_Bool_t new_status)              //   424
-{ /* low_pc=0x1272d4f */
+{
 	ecomp_Bool_t old_status; /* scope: local */                   //   426
+
+	old_status = mem_CheckPointsEnabled;
+	mem_CheckPointsEnabled = new_status;
+
+	return old_status;
 }
 
 ecomp_Bool_t mem_GetCheckStatus(void)                                 //   437
-{ /* low_pc=0x1272d6d */
+{
+	return mem_CheckPointsEnabled;
 }
 
 void mem_PrintText(FILE * stream, const char  * format, ...)          //   448
-{ /* low_pc=0x1272d79 */
+{
 	va_list params; /* scope: local */                            //   452
+
+	va_start( params, format );
+	vfprintf( stream, format, params );
+	va_end( params );
 }
 
 void mem_PrintStatValue(FILE * vstream, mem_Area_t area, const char  * descr, ecomp_Bool_t is_size, mem_Size_t value1, mem_Size_t value2) //   466
 { /* low_pc=0x1272e22 */
-	double val1; /* scope: local */                               //   474
-	double val2; /* scope: local */                               //   474
-	double byte; /* scope: local */                               //   474
-	double kbyte; /* scope: local */                              //   474
-	double mbyte; /* scope: local */                              //   474
-	double gbyte; /* scope: local */                              //   474
-	double percent; /* scope: local */                            //   474
-	{ /* mem_PrintStatValue+0x351 */
-		int num_errors; /* scope: global */                   //   553
-	} /* lexblock size=74 */
-}
+	double val1, val2, byte, kbyte, mbyte, gbyte, percent;
 
-static int                        num_errors; /* line: 553, size: 4, scope: global */
+	if( area <= MEM_AREA_LAST )
+	{
+		mem_PrintText( vstream, "%10s area %2d:  %-20s %12zu", mem_GetAreaName( area ), area, descr, value1 );
+	}
+	else
+	{
+		mem_PrintText( vstream, "%-28s %12zu", descr, value1 );
+	}
+
+	if( !value1 )
+		return;
+
+	val1 = value1;
+	val2 = value2;
+
+	if( is_size )
+	{
+		byte = val1;
+		kbyte = byte / 1000.0;
+		mbyte = kbyte / 1000.0;
+		gbyte = mbyte / 1000.0;
+
+		if( byte < 1000.0 && value2 != 0 )
+			mem_PrintText( vstream, "            " );
+		else if( kbyte < 1000.0 )
+			mem_PrintText( vstream, " = %6.1f %s", "K " );
+		else if( mbyte < 1000.0 )
+			mem_PrintText( vstream, " = %6.1f %s", "M " );
+		else
+			mem_PrintText( vstream, " = %6.1f %s", "G " );
+	}
+	else
+	{
+		byte = val1;
+		kbyte = byte / 1024.0;
+		mbyte = kbyte / 1024.0;
+		gbyte = mbyte / 1024.0;
+
+		if( byte < 1000.0 && value2 != 0 )
+			mem_PrintText( vstream, "            " );
+		else if( kbyte < 1000.0 )
+			mem_PrintText( vstream, " = %6.1f %s", "Kb" );
+		else if( mbyte < 1000.0 )
+			mem_PrintText( vstream, " = %6.1f %s", "Mb" );
+		else
+			mem_PrintText( vstream, " = %6.1f %s", "Gb" );
+	}
+
+	if( value2 )
+	{
+		static int num_errors;
+
+		if( value2 < value1 )
+		{
+			num_errors++;
+			if( num_errors > 32 )
+			{
+				ecomp_InternalWarning_( "invalid stats value: %zu > %zu", value1, value2 );
+				ui_PrintStackSimple();
+			}
+
+			if( is_size != 0 )
+			{
+				percent = val1 * 100 / val2;
+
+				mem_PrintText( vstream, "    %6.2f%%", percent );
+			}
+		}
+	}
+
+	mem_PrintText( vstream, "\n" );
+}
 
 void mem_PrintHotPool(FILE * vstream, mem_Pool_t * pool_p, mem_Size_t pool_size, mem_Size_t area_size) //   589
 { /* low_pc=0x1273223 */
@@ -98,48 +377,227 @@ void mem_PrintHotPool(FILE * vstream, mem_Pool_t * pool_p, mem_Size_t pool_size,
 	ecomp_Bool_t has_attrs; /* scope: local */                    //   596
 	int attr; /* scope: local */                                  //   597
 	int attr_num; /* scope: local */                              //   597
+
+	mem_PrintText( vstream, "%c id %-8zu - %9zu bytes (%4.1f%%), %8zu / %8zu entries",
+		mem_LastPoolNumEarly < pool_p->debug_num ? ' ' : '*',
+		pool_p->debug_num,
+		pool_size,
+		pool_size * 100.0 / area_size,
+		pool_p->num_entries, pool_p->num_alloc );
+
+	if( pool_p->debug_descr )
+		mem_PrintText( vstream, " (%s)", pool_p->debug_descr );
+
+	if( pool_p->is_attr_pool )
+		mem_PrintText( vstream, " (attr)" );
+
+	if( !pool_p->is_fixed )
+		mem_PrintText( vstream, " (float)" );
+
+	has_attrs = pool_p->max_attr_number > 0;
+
+	if( has_attrs )
+	{
+		attr_num = pool_p->max_attr_number;
+		for( attr = 0; attr < attr_num; attr++ )
+		{
+			attr_pool_p = mem_GetPoolAttrPoolP( pool_p, attr );
+
+			if( attr_pool_p )
+			{
+				mem_PrintText( vstream, " (attr%d id %zu)", attr + 1, attr_pool_p->debug_num );
+			}
+		}
+	}
+	fputc( ' ', vstream );
 }
 
 void mem_PrintAreaStat(FILE * vstream, int print_num, mem_Area_t area, mem_AreaStat_t * area_stat, mem_AreaStat_t * all_stat, ecomp_Bool_t is_saved) //   693
 { /* low_pc=0x127344a */
-	mem_Size_t area_size; /* scope: local */                      //   701
-	mem_Size_t min_size; /* scope: local */                       //   701
-	{ /* mem_PrintAreaStat+0x20b */
-		mem_Pool_ref pool; /* scope: local */                 //   758
-		mem_Pool_t * pool_p; /* scope: local */               //   759
-		mem_Pool_t * max_pool_p; /* scope: local */           //   759
-		mem_Size_t pool_size; /* scope: local */              //   760
-		mem_Size_t max_size; /* scope: local */               //   760
-		ecomp_Bool_t is_header_printed; /* scope: local */    //   761
-		double min_percent; /* scope: local */                //   762
-		int i; /* scope: local */                             //   763
-		{ /* mem_PrintAreaStat+0x2b5 */
-			mem_Search_t mem_iter; /* scope: local */     //   776
-		} /* lexblock size=360 */
-	} /* lexblock size=602 */
+	mem_Size_t area_size, min_size;
+
+	if( print_num < 8 )
+		min_size = 0;
+	else
+	{
+		min_size = all_stat->size / 1024;
+		if( min_size < 1024 )
+			min_size = 1024;
+	}
+
+	area_size = area_stat->size;
+
+	if( is_saved == 0 || min_size < area_size )
+	{
+		mem_PrintText( vstream,
+			"*****************************************************************************\n" );
+
+		mem_PrintStatValue( vstream, area, "Total memory volume",
+			ECOMP_TRUE, area_size, all_stat->size );
+
+		if( min_size < area_size )
+		{
+			mem_PrintStatValue( vstream, area, "User memory volume",
+				ECOMP_TRUE, area_stat->user_size, all_stat->user_size );
+			mem_PrintStatValue( vstream, area, "Number of pools",
+				ECOMP_FALSE, area_stat->pool_number, all_stat->pool_number );
+			mem_PrintStatValue( vstream, area, "Live entries",
+				ECOMP_FALSE, area_stat->entry_number, all_stat->entry_number);
+			mem_PrintStatValue( vstream, area, "Allocated entries",
+				ECOMP_FALSE, area_stat->alloc_number, all_stat->alloc_number);
+		}
+
+		if( is_saved == 0 && area != MEM_AREA_LAST )
+		{
+			if( area_size * 100.0 > all_stat->size * 2.0 )
+			{
+				mem_Pool_ref pool;
+				mem_Pool_t *pool_p, *max_pool_p;
+				mem_Size_t pool_size, max_size;
+				ecomp_Bool_t is_header_printed = ECOMP_FALSE;
+				double min_percent;
+				int i;
+
+				max_pool_p = NULL;
+				max_size = 0;
+
+				if( area_size * 100 < all_stat->size * 8.0 )
+					min_percent = 0.5;
+				else min_percent = 1.0;
+
+				for( i = 0; i < ECOMP_ARRAYSIZE( mem_MetaPool_p ); i++ )
+				{
+					mem_Search_t mem_iter;
+
+					for( pool = mem_FirstEntry( mem_MetaPool_p[i], &mem_iter );
+						  mem_IsNotRefNull( pool );
+						  pool = mem_NextEntry( &mem_iter ))
+					{
+						pool_p = mem_GetPoolPtr( pool );
+
+						if( area == pool_p->pool_area && !pool_p->is_attr_pool )
+						{
+							pool_size = mem_GetPoolMemSizeWithAttr( pool_p );
+							if( pool_size > max_size && pool_size > 10240 )
+							{
+								max_size = pool_size;
+								max_pool_p = pool_p;
+							}
+
+							if( pool_size * 100 >= area_size * min_percent )
+							{
+								if( !is_header_printed )
+								{
+									is_header_printed = ECOMP_TRUE;
+									mem_PrintText( vstream, "\nHot pools:\n" );
+								}
+								mem_PrintHotPool( vstream, pool_p, pool_size, area_size );
+							}
+						}
+					}
+				}
+
+				if( !is_header_printed && max_pool_p != NULL )
+				{
+					mem_PrintText( vstream, "\nLargest pool:\n" );
+					mem_PrintHotPool( vstream, max_pool_p, max_size, area_size );
+				}
+			}
+		}
+	}
 }
 
 int mem_CmpAreaSize(const void  * elem1_p, const void  * elem2_p)     //   829
-{ /* low_pc=0x12738b5 */
-	const mem_AreaStat_t  * stat1_p; /* scope: local */           //   833
-	const mem_AreaStat_t  * stat2_p; /* scope: local */           //   834
+{
+	const mem_AreaStat_t  * stat1_p = elem1_p; /* scope: local */           //   833
+	const mem_AreaStat_t  * stat2_p = elem2_p; /* scope: local */           //   834
+
+	if( stat1_p->size < stat2_p->size )
+		return 1;
+	if( stat1_p->size > stat2_p->size )
+		return -1;
+	return 0;
 }
 
 void mem_PrintPoolsStat(FILE * vstream, mem_PoolStat_t * stat_p, ecomp_Bool_t is_saved) //   856
-{ /* low_pc=0x127390c */
+{
 	int area; /* scope: local */                                  //   861
+
+	if( !vstream )
+		vstream = stdout;
+
+	tools_QuickSort( stat_p->area_stat, ECOMP_ARRAYSIZE( stat_p->area_stat ), sizeof( stat_p->area_stat[0] ), mem_CmpAreaSize );
+
+	mem_PrintText(vstream,
+		"*****************************************************************************\n");
+	mem_PrintText(vstream,
+		"*********************** ECOMP MEMORY USAGE STATISTICS ***********************\n");
+
+	for( area = MEM_AREA_UNKNOWN; area < MEM_AREA_LAST; area++ )
+	{
+		mem_PrintAreaStat( vstream, area, stat_p->area_stat[area].area, stat_p->area_stat + area, &stat_p->whole_stat, is_saved );
+	}
+
+	mem_PrintAreaStat( vstream, MEM_AREA_LAST, MEM_AREA_LAST, &stat_p->whole_stat, &stat_p->whole_stat, is_saved );
 }
 
 void mem_PrintMallocStat(FILE * vstream)                              //   910
 { /* low_pc=0x1273a2a */
 	mem_Area_t mem_area; /* scope: local */                       //   913
-	{ /* mem_PrintMallocStat+0xed */
-		mem_Size_t heap_size; /* scope: local */              //   957
-	} /* lexblock size=188 */
+
+	if( !vstream )
+		vstream = stdout;
+
+	mem_PrintText( vstream,
+		"\n********************* Non-Pool Memory Usage Statistics **********************\n" );
+	for( mem_area = MEM_AREA_UNKNOWN; mem_area < MEM_AREA_LAST; mem_area++ )
+	{
+	  if(( mem_area != MEM_AREA_POOL ) && ( mem_AreasSize[mem_area] != 0 ))
+	  {
+		 mem_PrintText( vstream, "%8s area:  ", mem_GetAreaName(mem_area));
+		 mem_PrintStatValue( vstream, MEM_FICT_AREA_WHOLE, "Total memory volume",
+			ECOMP_TRUE, mem_AreasSize[mem_area], 0 );
+	  }
+	}
+	mem_PrintText( vstream,
+		"\n********************* Summary Memory Usage Statistics ***********************\n" );
+
+	{
+		mem_Size_t heap_size = sbrk( 0 ); /* scope: local */              //   957
+
+		if( heap_size )
+			mem_PrintStatValue( vstream, MEM_FICT_AREA_WHOLE, "System heap size",
+				ECOMP_TRUE, heap_size, 0 );
+		if( heap_size < mem_BlockStat[1].bound_size + mem_BlockStat[0].bound_size )
+			heap_size = mem_BlockStat[1].bound_size + mem_BlockStat[0].bound_size;
+		mem_PrintStatValue( vstream, MEM_FICT_AREA_WHOLE, "Allocated heap size",
+			ECOMP_TRUE, mem_BlockStat[0].bound_size + mem_BlockStat[1].bound_size, heap_size );
+		mem_PrintStatValue( vstream, MEM_FICT_AREA_WHOLE, "User allocated heap size",
+			ECOMP_TRUE, mem_BlockStat[0].usr_size + mem_BlockStat[1].usr_size, mem_BlockStat[0].bound_size + mem_BlockStat[1].bound_size );
+		mem_PrintStatValue( vstream, MEM_FICT_AREA_WHOLE, "Number of allocated blocks",
+			ECOMP_FALSE, mem_BlockStat[0].nblock + mem_BlockStat[1].nblock, 0 );
+		mem_PrintStatValue( vstream, MEM_FICT_AREA_WHOLE, "Manager heap size",
+			ECOMP_TRUE, mem_BlockStat[1].bound_size, mem_BlockStat[0].bound_size + mem_BlockStat[1].bound_size);
+		mem_PrintStatValue( vstream, MEM_FICT_AREA_WHOLE, "User manager heap size",
+			ECOMP_TRUE, mem_BlockStat[1].usr_size,mem_BlockStat[1].bound_size );
+		mem_PrintStatValue( vstream, MEM_FICT_AREA_WHOLE, "Number of manager blocks",
+			ECOMP_FALSE, mem_BlockStat[1].nblock, mem_BlockStat[0].nblock + mem_BlockStat[1].nblock);
+		mem_PrintStatValue( vstream, MEM_FICT_AREA_WHOLE, "Non-manager heap size",
+			ECOMP_TRUE, mem_BlockStat[0].bound_size, mem_BlockStat[0].bound_size + mem_BlockStat[1].bound_size );
+		mem_PrintStatValue( vstream, MEM_FICT_AREA_WHOLE, "User non-manager heap size",
+			ECOMP_TRUE, mem_BlockStat[0].usr_size, mem_BlockStat[0].bound_size );
+		mem_PrintStatValue( vstream, MEM_FICT_AREA_WHOLE, "Number of non-manager blocks",
+			ECOMP_FALSE, mem_BlockStat[0].nblock, mem_BlockStat[0].nblock + mem_BlockStat[1].nblock );
+		mem_PrintText( vstream,"\n" );
+	}
 }
 
-void mem_PrintMemStat(FILE * vstream)                                 //  1050
-{ /* low_pc=0x1273e11 */
+void mem_PrintMemStat( FILE * vstream )                                 //  1050
+{
 	mem_PoolStat_t stat_s; /* scope: local */                     //  1052
+
+	mem_CollectPoolsStat( &stat_s );
+	mem_PrintPoolsStat( vstream, &stat_s, 0 );
+	mem_PrintMallocStat( vstream );
 }
 
