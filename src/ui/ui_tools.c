@@ -2,8 +2,12 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <stdarg.h>
 #include "ecomp_types.h"
 #include "ecomp_options.h"
+#include "ecomp_utils.h"
 #include "tools/mem_iface.h"
 #include "tools/hash_iface.h"
 #include "ecomp_options.h"
@@ -16,22 +20,59 @@ static long long int              ui_Buff[8192]; /* line: 32, size: 65536, scope
 static size_t                     ui_AllocedSize; /* line: 33, size: 8, scope: global */
 
 void * ui_Malloc(size_t size)                                         //    40
-{ /* low_pc=0x127d7db */
+{
 	int count; /* scope: local */                                 //    42
 	void * res; /* scope: local */                                //    43
+
+	count = (int)((size + 7) >> 3);
+	if( ui_AllocedSize + count < ECOMP_ARRAYSIZE( ui_Buff ) )
+	{
+		res = ui_Buff + ui_AllocedSize;
+		ui_AllocedSize = ui_AllocedSize + count;
+	}
+	else
+	{
+		res = malloc(size);
+		if( !res )
+		{
+			ui_UserError("not enough memory");
+		}
+	}
+	return res;
 }
 
 char * ui_Strdup(const char  * str)                                   //    71
-{ /* low_pc=0x127d872 */
+{
 	char * res; /* scope: local */                                //    73
+
+	res = ui_Malloc( strlen( str ));
+	strcpy( res, str );
+
+	return res;
 }
 
 const char  * ui_MallocSprintf(const char  * format, ...)             //    88
-{ /* low_pc=0x127d8b3 */
+{
 	int len; /* scope: local */                                   //    90
 	int real_len; /* scope: local */                              //    90
 	char * res_str; /* scope: local */                            //    91
 	va_list ap; /* scope: local */                                //    92
 	va_list ap_copy; /* scope: local */                           //    92
+
+	va_start( ap, format );
+	va_copy( ap_copy, ap );
+	len = vsnprintf( NULL, 0, format, ap_copy );
+
+	res_str = ui_Malloc( len + 1 );
+	real_len = vsnprintf( res_str, len + 1, format, ap );
+	va_end( ap );
+
+	if( len != real_len )
+	{
+		ecomp_InternalError_( "not enough space in string (size %d, required %d)",
+			len, real_len );
+	}
+
+	return res_str;
 }
 
