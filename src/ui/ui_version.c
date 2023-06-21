@@ -2,18 +2,23 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
 #include "ecomp_types.h"
-#include "ecomp_options.h"
-#include "tools/mem_iface.h"
-#include "tools/hash_iface.h"
 #include "ecomp_options.h"
 #include "ui/ui_message.h"
 #include "ui/ui_colorize.h"
 #include "ui/ui_exec.h"
 #include "tools/buff_iface.h"
-const char  * ui_GetCompilerBuildDateTime(void)                       //    34
-{ /* low_pc=0x127cd1a */
-	char ui_BuildDateTime; /* scope: global */                    //    36
+
+const char *ui_GetCompilerBuildDateTime(void)                       //    34
+{
+	static char ui_BuildDateTime[64]; /* scope: global */                    //    36
+
+	str_Printf( ui_BuildDateTime, sizeof( ui_BuildDateTime ), "%s::%s", __DATE__, __TIME__ );
+
+	ecomp_Assert( strlen( ui_BuildDateTime ) < sizeof( ui_BuildDateTime ));
+
+	return ui_BuildDateTime;
 }
 
 static char                       ui_BuildDateTime[64]; /* line: 36, size: 64, scope: global */
