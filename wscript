@@ -20,7 +20,9 @@ def configure(conf):
 def build(bld):
 	libs = [ 'M' ]
 
-	source = bld.path.ant_glob(['src/**/*.c'])
+	source = bld.path.ant_glob(['src/ecomp_*.c', 
+			'src/ui/*.c',
+			'src/tools/*.c'])
 
 	includes = [ 'src/' ]
 

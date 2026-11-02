@@ -2,6 +2,8 @@
 #pragma once
 #include <stddef.h>
 #include <stdint.h>
+#include <stdio.h>
+#include <stdint.h>
 #include "ecomp_types.h"
 
 /* line: 233 */
@@ -103,6 +105,49 @@ typedef size_t mem_Gen_t; /* size: 8 */
 typedef struct {
 	mem_EntryPtr_t             ref;                  /*     0     8 */
 } mem_Entry_ref; /* size: 8 */
+
+// a1ba:
+// memory entry reference consists of two parts
+// 0:15						generation tag
+// 16:sizeof(void*)		actual pointer
+
+// pointer has hidden data above it
+NOXREF typedef struct mem_EntryRefHiddenData_t
+{
+	mem_Gen_t gen;
+	size_t del;
+} mem_EntryRefHiddenData_t;
+
+#define MEM_ENTRY_GEN_MASK ( (uintptr_t) 0xf )
+#define MEM_ENTRY_PTR_MASK ( ~MEM_ENTRY_GEN_MASK )
+
+#define MEM_ENTRY_GEN_( addr )			((uintptr_t)(addr) & MEM_ENTRY_GEN_MASK)
+#define MEM_ENTRY_PTR_( addr )			((uintptr_t)(addr) & MEM_ENTRY_PTR_MASK)
+#define MEM_ENTRY_HIDDENDATA_( addr )	((mem_EntryRefHiddenData_t *)(\
+	MEM_ENTRY_PTR_( addr ) - sizeof( mem_EntryRefHiddenData_t )))
+
+#define MEM_ENTRY_GEN( _ref ) MEM_ENTRY_GEN_(( _ref ).ref )
+#define MEM_ENTRY_PTR( _ref ) MEM_ENTRY_PTR_(( _ref ).ref )
+#define MEM_ENTRY_HIDDENDATA( _ref ) MEM_ENTRY_HIDDENDATA_(( _ref ).ref )
+
+#define MEM_ENTRY_CAST( type, _ref ) ((type *)(MEM_ENTRY_PTR( _ref )))
+
+#define MEM_ENTRY_DEL_FLAG( _ref ) MEM_ENTRY_HIDDENDATA( _ref )->del
+#define MEM_ENTRY_GEN_FLAG( _ref ) MEM_ENTRY_HIDDENDATA( _ref )->gen
+
+#define MEM_ENTRY_CONSTRUCT( addr ) (mem_EntryPtr_t) \
+	(MEM_ENTRY_PTR_( addr ) | MEM_ENTRY_HIDDENDATA_( addr )->gen)
+
+#define MEM_ENTRY_VALIDATE_( addr ) \
+	ecomp_AssertMessage( addr, \
+		"null reference" ); \
+	ecomp_AssertMessage( MEM_ENTRY_HIDDENDATA_( addr )->del != 1, \
+		"using of deleted entry" ); \
+	ecomp_AssertMessage( MEM_ENTRY_HIDDENDATA_( addr )->gen != MEM_ENTRY_PTR_( addr ), \
+		"using of deleted entry (generation check failed)" )
+
+#define MEM_ENTRY_VALIDATE( _ref ) \
+	MEM_ENTRY_VALIDATE_( (_ref).ref )
 
 /* line: 358 */
 typedef enum {
@@ -220,6 +265,8 @@ struct mem_Pool_r {
 	unsigned int               __ecomp_magic_num__;  /*    96     4 */
 }; /* size: 104 */
 
+#define MEM_POOL_MAGIC_NUM 0xaddecabe
+
 /* line: 601 */
 typedef struct mem_Pool_r mem_Pool_t; /* size: 104 */
 
@@ -228,6 +275,7 @@ typedef mem_Pool_t * mem_PoolPtr_t; /* size: 8 */
 
 /* line: 607 */
 typedef mem_Entry_ref mem_Pool_ref; /* size: 8 */
+#define MEM_POOL( _ref ) MEM_ENTRY_CAST( mem_Pool_t, _ref )
 
 /* line: 614 */
 typedef struct mem_FixedUnit_t mem_FixedUnit_t; /* size: 24 */
@@ -242,3 +290,32 @@ struct mem_FixedUnit_t {
 /* line: 821 */
 typedef mem_Size_t mem_EntryID_t; /* size: 8 */
 
+// STOP GENERATED CODE
+
+//
+// mem.c
+//
+void mem_InitFragmentList( void );
+void *mem_InitFragment( void *ptr, mem_Size_t size );
+ecomp_Bool_t mem_CheckFragment( void *ptr, ecomp_Bool_t is_fatal );
+void mem_CloseFragment( void *ptr );
+void mem_CheckPtr( void *ptr );
+void *mem_AreaCalloc( mem_Size_t nmemb, mem_Size_t size, mem_Area_t area );
+void *mem_AreaMalloc( mem_Size_t size, mem_Area_t area );
+void mem_AreaFree( void *ptr, mem_Area_t area );
+ecomp_Bool_t mem_CheckMallocLeaksInArea( mem_Area_t area, ecomp_Bool_t is_fatal );
+ecomp_Bool_t mem_CheckMemory( ecomp_Bool_t is_fatal );
+void mem_Event( void );
+void mem_PrintMemSize( FILE *out_file, mem_Size_t size );
+void mem_PrintMaxUsage( void );
+const char *mem_SkipStatItem( const char *str );
+mem_Size_t mem_GetCurMemUsage( void );
+void mem_SetCurrentPhaseAndProcName( void );
+void mem_StatMaxMem( mem_Size_t size );
+void *mem_Calloc( mem_Size_t nmemb, mem_Size_t size );
+void *mem_Malloc( mem_Size_t size );
+void mem_Free( void *ptr );
+void *mem_Realloc( void *ptr, mem_Size_t size );
+void mem_SetChunkLiveForever( void *ptr );
+void mem_SetMallocTrace( ecomp_Bool_t val );
+char *mem_StrDup( const char *str );

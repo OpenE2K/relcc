@@ -41,6 +41,7 @@ void ui_Print(const char  * format, ...)                              //   207
 
 void ui_SetProgName(const char  * prog_name)                          //   222
 { /* low_pc=0x127fba3 */
+	ui_ProgramName = prog_name;
 }
 
 void ui_SetOptionPrintStack(ecomp_Bool_t is_print)                    //   231

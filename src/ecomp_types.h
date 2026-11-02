@@ -9,6 +9,8 @@ typedef unsigned int ecomp_Bool_t; /* size: 4 */
 #define ECOMP_FALSE (ecomp_Bool_t)(0)
 #define ECOMP_TRUE  (ecomp_Bool_t)(!0)
 
+#define ECOMP_ARRAYSIZE( array ) ( sizeof(( array )) / sizeof(( array )[0] ))
+
 /* line: 53 */
 typedef enum {
 	ECOMP_YES_CMP     = 0,
@@ -40,3 +42,4 @@ typedef struct {
 	ecomp_ProfFloatVal_t       val;                  /*     0    16 */
 } ecomp_Profile_t; /* size: 16 */
 
+#define NOXREF

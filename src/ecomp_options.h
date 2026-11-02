@@ -2,6 +2,9 @@
 #pragma once
 
 #include "ecomp_types.h"
+#include "tools/mem_iface.h"
+#include "tools/hash_iface.h"
+#include "ecomp_utils.h"
 
 /* line: 33 */
 typedef enum {

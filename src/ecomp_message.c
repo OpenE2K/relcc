@@ -2,6 +2,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include "ecomp_types.h"
 #include "ecomp_options.h"
 #include "tools/mem_iface.h"
@@ -52,16 +53,26 @@
 #include "metair/metair_ifacetypes.h"
 #include "tools/psf_iface.h"
 #include "cfg/cfg_iface.h"
+
+#define PRINT_ERROR( str ) \
+	fprintf( stderr, "%s:%d: " str, __FUNCTION__, __LINE__ )
+
 void ecomp_PlainExit(void)                                            //    37
 { /* low_pc=0x40e190 */
 }
 
 void ecomp_Fatal(void)                                                //    56
 { /* low_pc=0x40e19e */
-	ecomp_Bool_t is_called; /* scope: global */                   //    59
-}
+	static ecomp_Bool_t is_called; /* scope: global */                   //    59
 
-static ecomp_Bool_t               is_called; /* line: 59, size: 4, scope: global */
+	if( is_called ) {
+		PRINT_ERROR( "ecomp_FatalExit: рекурсивный вызов\n"); // NOTE: KOI8R
+		exit(1);
+	}
+	is_called = 1;
+	scr_GetBoolOptionWithDefault( "force_print_stack", 0 );
+	exit( 1 );
+}
 
 int ecomp_Message(FILE * stream, const char  * prefix, const char  * msg, struct typedef __va_list_tag __va_list_tag * ap, const char  * suffix) //   105
 { /* low_pc=0x40e207 */

@@ -46,27 +46,68 @@ static uint32_t                   mem_ProcID; /* line: 1090, size: 4, scope: glo
 static size_t                     mem_TracePoolID; /* line: 1097, size: 8, scope: global */
 
 void mem_SetPoolDebugNum(mem_Pool_t * pool_p)                         //  1175
-{ /* low_pc=0x123384e */
+{
+	pool_p->debug_num = ++mem_LastPoolNum;
+	pool_p->is_printed = ECOMP_FALSE;
+	pool_p->is_entry_alloc = ECOMP_FALSE;
+	pool_p->is_used = ECOMP_FALSE;
 }
 
 mem_Size_t mem_GetPoolDebugNum(mem_Pool_ref pool_ref)                 //  1204
-{ /* low_pc=0x12338a4 */
+{
 	mem_Pool_t * pool_p; /* scope: local */                       //  1206
+
+	if( MEM_ENTRY_PTR( pool_ref ) )
+	{
+		pool_p = mem_GetPoolPtr( pool_ref );
+		return pool_p->debug_num;
+	}
+
+	return mem_LastPoolNum;
 }
 
 void mem_PrintUnusedPools(void)                                       //  1314
-{ /* low_pc=0x1233967 */
+{
+	// TODO: EMPTY?
+	return;
 }
 
 void mem_PrintTopUsage(void)                                          //  1324
-{ /* low_pc=0x123396e */
+{
+	printf("\n***************** TOP MEMORY USAGE INFO *******************\n"
+			 "Top memory usage: %zu (event %zu)\n"
+			 "Top manager memory usage: %zu (event %zu)\n"
+			 "Top non-manager memory usage: %zu (event %zu)"
+			 "\n***********************************************************\n",
+			 mem_BlockStat[2].max_usr_size,mem_BlockStat[2].max_size_event_number,
+			 mem_BlockStat[1].max_usr_size,mem_BlockStat[1].max_size_event_number,
+			 mem_BlockStat[0].max_usr_size,mem_BlockStat[0].max_size_event_number);
+	return;
 }
 
 int mem_GetFixedUnitOptimalNumEntries(mem_Pool_t * pool_p)            //  1351
-{ /* low_pc=0x12339da */
+{
 	int res; /* scope: local */                                   //  1353
-	mem_Size_t num_entries; /* scope: local */                    //  1354
-	mem_Size_t threshold; /* scope: local */                      //  1354
+	mem_Size_t num_entries, threshold; /* scope: local */         //  1354
+
+	num_entries = pool_p->num_entries;
+	threshold = pool_p->threshold;
+
+	if( num_entries >= threshold * 32 )
+		res = threshold * 4;
+	else if( num_entries >= threshold * 8 )
+		res = threshold * 2;
+	else if( num_entries >= threshold * 2 )
+		res = threshold;
+	else if( num_entries >= threshold / 2 )
+		res = threshold / 2;
+	else
+		res = threshold / 4;
+
+	if( res <= 0 )
+		res = 1;
+
+	return res;
 }
 
 mem_FixedUnit_t * mem_NewFixedUnit(mem_Pool_t * pool_p, mem_Size_t num_entries) //  1695
@@ -74,15 +115,69 @@ mem_FixedUnit_t * mem_NewFixedUnit(mem_Pool_t * pool_p, mem_Size_t num_entries) 
 	mem_FixedUnit_t * unit_p; /* scope: local */                  //  1699
 	mem_EntryPtr_t old_first_free_entry; /* scope: local */       //  1700
 	void * entry_p; /* scope: local */                            //  1701
-	mem_Size_t i; /* scope: local */                              //  1702
-	mem_Size_t unit_size; /* scope: local */                      //  1702
-	mem_Size_t entry_size; /* scope: local */                     //  1702
+	mem_Size_t i, unit_size, entry_size; /* scope: local */       //  1702
+
+
+	entry_size = pool_p->entry_size;
+#if 0
+	unit_size = entry_size * num_entries
+			+ (8 * ((pool_p->max_attr_number + 5LL) + 15) & MEM_POOL_ADDR_MASK)
+			- 8 * (pool_p->max_attr_number + 2LL);
+#else
+	// FIXME
+	unit_size = ( entry_size * num_entries + sizeof( mem_FixedUnit_t ) +
+			8 * pool_p->max_attr_number + MEM_ENTRY_GEN_MASK ) & MEM_ENTRY_PTR_MASK;
+#endif
+	mem_IsInternalEvent = ECOMP_TRUE;
+
+	unit_p = mem_AreaMalloc( unit_size, MEM_AREA_POOL );
+	unit_p->unit_size = unit_size;
+	unit_p->num_entries = num_entries;
+	unit_p->next_unit = pool_p->unit_list;
+	pool_p->unit_list = unit_p;
+
+	old_first_free_entry = pool_p->free_list;
+	entry_p = (void*)((uintptr_t)unit_p + pool_p->unit_offset);
+	pool_p->free_list = entry_p;
+	pool_p->num_alloc += num_entries;
+
+	for( i = 0; i < num_entries; i++ )
+	{
+		*(uintptr_t*)entry_p = (uintptr_t)entry_p + entry_size;
+		*(uintptr_t*)( entry_p - 1 ) = 1;
+		*(uintptr_t*)( entry_p - 2 ) = 0;
+		entry_p = (void *)((char *)entry_p + entry_size);
+	}
+	*(void **)( entry_p - entry_size ) = old_first_free_entry;
+
+	return unit_p;
 }
 
 mem_Entry_ref mem_NewFixedEntry(mem_Pool_ref pool_ref)                //  1757
-{ /* low_pc=0x1233bee */
+{
 	mem_EntryPtr_t ptr; /* scope: local */                        //  1759
 	mem_Pool_t * pool_p; /* scope: local */                       //  1760
+
+	pool_p = mem_GetPoolPtr( pool_ref );
+
+	if( pool_p != mem_MetaPool_p && MEM_POOL( pool_ref )->lock_num )
+		ecomp_InternalError_( "locked pool error" );
+
+	ptr = pool_p->free_list;
+
+	if( ptr == NULL )
+	{
+		NOXREF mem_Size_t num_entries = mem_GetFixedUnitOptimalNumEntries( pool_p );
+		mem_NewFixedUnit( pool_p, num_entries );
+		ptr = pool_p->free_list;
+	}
+
+	pool_p->free_list = ptr;
+	pool_p->num_entries++;
+
+	mem_TmpEntryRef.ref = MEM_ENTRY_CONSTRUCT( ptr );
+
+	return mem_TmpEntryRef;
 }
 
 void mem_NewFixedUnitWithAttrs(mem_Pool_t * pool_p, mem_Size_t num_entries) //  1787
@@ -91,9 +186,26 @@ void mem_NewFixedUnitWithAttrs(mem_Pool_t * pool_p, mem_Size_t num_entries) //  
 	mem_Pool_ref attr_pool; /* scope: local */                    //  1792
 	mem_Entry_ref attr; /* scope: local */                        //  1793
 	char * entry_p; /* scope: local */                            //  1794
-	mem_Size_t i; /* scope: local */                              //  1795
-	mem_Size_t j; /* scope: local */                              //  1795
-	mem_Size_t entry_size; /* scope: local */                     //  1795
+	mem_Size_t i, j, entry_size; /* scope: local */               //  1795
+
+	unit_p = mem_NewFixedUnit( pool_p, num_entries );
+	entry_size = pool_p->entry_size;
+	for( i = 0; i < pool_p->max_attr_number; i++ )
+	{
+		attr_pool.ref = (mem_EntryPtr_t)((char *)pool_p + sizeof( *pool_p )) + i;
+
+		if( MEM_ENTRY_PTR( attr_pool ) == 0 )
+			continue;
+
+		entry_p = (char *)&unit_p + pool_p->unit_offset;
+
+		for( j = 0; j < num_entries; j++ )
+		{
+			attr = mem_NewFixedEntry( attr_pool );
+
+			entry_p =
+		}
+	}
 }
 
 mem_Pool_ref mem_NewAttrPool(const mem_InitPool_t  * init_pool_p)     //  1830
@@ -473,6 +585,10 @@ void mem_DeleteEntry(mem_Entry_ref entry_ref)                         //  4006
 mem_Pool_t * mem_GetPoolPtr(mem_Pool_ref pool)                        //  4058
 { /* low_pc=0x1237c78 */
 	mem_Pool_t * pool_p; /* scope: local */                       //  4060
+
+	MEM_ENTRY_VALIDATE( pool );
+
+	return MEM_POOL( pool );
 }
 
 mem_EntryPtr_t mem_GetEntryUnsafe(mem_Entry_ref entry_ref)            //  4081
@@ -639,6 +755,8 @@ ecomp_Bool_t mem_IsEntryPoolFixed(mem_Entry_ref entry_ref)            //  4873
 	mem_Pool_t * pool_p; /* scope: local */                       //  4875
 	mem_Pool_ref pool_ref; /* scope: local */                     //  4876
 	mem_EntryPtr_t entry_p; /* scope: local */                    //  4877
+
+	MEM_ENTRY_VALIDATE( entry_ref );
 }
 
 void mem_Copy(mem_Entry_ref src_entry, mem_Entry_ref dst_entry)       //  4898
@@ -646,6 +764,19 @@ void mem_Copy(mem_Entry_ref src_entry, mem_Entry_ref dst_entry)       //  4898
 	void * src_entry_p; /* scope: local */                        //  4902
 	void * dst_entry_p; /* scope: local */                        //  4903
 	mem_Size_t src_size; /* scope: local */                       //  4904
+
+	src_size = mem_GetEntrySize( src_entry );
+	if( src_size != mem_GetEntrySize( dst_entry ))
+		ecomp_InternalError_( "copy to entry with different size" );
+	if( mem_IsEntryPoolFixed( src_entry ) == ECOMP_FALSE )
+		ecomp_InternalError_( "copy float entry" );
+	if( mem_IsEntryPoolFixed( dst_entry ) == ECOMP_FALSE )
+		ecomp_InternalError_( "copy float entry" );
+
+	src_entry_p = mem_GetEntryUnsafe( src_entry );
+	dst_entry_p = mem_GetEntryUnsafe( dst_entry );
+
+	memcpy( dst_entry_p, src_entry_p, src_size );
 }
 
 mem_List_ref mem_ListInsPtr(mem_List_ref unit_ref, mem_EntryPtr_t data) //  4922
@@ -661,33 +792,72 @@ mem_List_ref mem_ListRemoveShift(mem_List_ref unit_ref)               //  4941
 }
 
 mem_EntryPtr_t mem_ListGetClientPtr(mem_List_ref unit_ref)            //  4957
-{ /* low_pc=0x1239912 */
-	mem_List_t * unit_p; /* scope: local */                       //  4959
+{
 }
 
 void mem_InitAutoPools(void)                                          //  4970
-{ /* low_pc=0x1239942 */
+{
+	ecomp_Assert( mem_IsPoolRefNull( mem_ListPool ));
+
+	mem_ListPool = mem_NewPoolFixed( 0x10, MEM_AREA_MANAGER, 3, 0x20 );
+	mem_AutoPoolsList.ref = NULL;
 }
 
 void mem_DeleteAutoPools(ecomp_Bool_t is_final)                       //  4982
-{ /* low_pc=0x12399b0 */
+{
 	mem_List_ref list_unit; /* scope: local */                    //  4984
 	mem_Pool_ref * pool_ref_p; /* scope: local */                 //  4985
+
+	if( is_final )
+	{
+		mem_DeleteEmptyPool( mem_ListPool );
+		mem_ListPool.ref = NULL;
+	}
+	else
+	{
+		for( list_unit = mem_AutoPoolsList;
+			mem_IsNotRefNull( list_unit );
+			list_unit = mem_ListRemoveShift( list_unit ))
+		{
+			pool_ref_p = mem_ListGetClientPtr( list_unit );
+			mem_DeletePool( pool_ref_p );
+
+			pool_ref_p->ref = NULL;
+		}
+
+		mem_AutoPoolsList.ref = NULL;
+	}
 }
 
 mem_Entry_ref mem_NewAutoEntryInternal(mem_Pool_ref * auto_pool_p, mem_Size_t entry_size) //  5016
-{ /* low_pc=0x1239a43 */
+{
 	mem_Entry_ref entry_ref; /* scope: local */                   //  5020
+
+	if( mem_IsPoolRefNull( auto_pool_p ))
+	{
+		auto_pool_p = mem_NewPoolFixed( entry_size, MEM_AREA_AUTO, ECOMP_TRUE, 0x20 );
+
+		mem_SetPoolLiveRange( auto_pool_p, 1 );
+		mem_SetPoolIsAuto( auto_pool_p );
+		mem_AutoPoolsList = mem_ListInsPtr( mem_AutoPoolsList, auto_pool_p );
+	}
+
+	return mem_NewEntry( auto_pool_p );
 }
 
 void mem_Init(void)                                                   //  5108
-{ /* low_pc=0x1239add */
+{
+	mem_InitFragmentList();
+	mem_InitMetaPool();
+	mem_InitAutoPools();
+	mem_InitAreaNames();
 }
 
 const char  *              mem_LiveRangeNames[4]; /* line: 5129, size: 32, scope: global */
 
 void mem_DisableForeverLiveRange(void)                                //  5143
-{ /* low_pc=0x1239af8 */
+{
+	mem_IsLiveForeverEnabled = ECOMP_FALSE;
 }
 
 int mem_CmpLeakNum(const void  * leak1_p, const void  * leak2_p)      //  5155
@@ -699,32 +869,87 @@ int mem_CmpLeakNum(const void  * leak1_p, const void  * leak2_p)      //  5155
 }
 
 ecomp_Bool_t mem_CheckPoolLeaks(mem_LiveRange_t live_range, const char  * proc_name, ecomp_Bool_t is_fatal) //  5205
-{ /* low_pc=0x1239b82 */
+{
 	mem_Pool_ref metapool; /* scope: local */                     //  5210
 	mem_Search_t pool_iter; /* scope: local */                    //  5211
 	mem_Pool_ref pool_ref; /* scope: local */                     //  5212
 	mem_Pool_t * pool_p; /* scope: local */                       //  5213
 	mem_Pool_ref * leak_arr; /* scope: local */                   //  5214
-	mem_Size_t i; /* scope: local */                              //  5215
-	mem_Size_t pools_count; /* scope: local */                    //  5215
-	mem_Size_t new_count; /* scope: local */                      //  5215
-	mem_Size_t total_count; /* scope: local */                    //  5215
-	mem_Size_t printed_count; /* scope: local */                  //  5215
+	mem_Size_t i, pools_count, new_count, total_count, printed_count; //  5215
 	mem_LiveRange_t effect_live_range; /* scope: local */         //  5216
+
+	pools_count = 0;
+	for( i = 0; i < ECOMP_ARRAYSIZE( mem_MetaPool_p ); i++ )
+	{
+		metapool = mem_MetaPool_p[i];
+		for( pool_ref = mem_FirstEntry( metapool, &pool_iter );
+			mem_IsNotRefNull( pool_ref );
+			pool_ref = mem_NextEntry( &pool_iter ))
+		{
+			pool_p = MEM_POOL( pool_ref );
+			
+		}
+	}
 }
 
 ecomp_Bool_t mem_CheckLeaks(mem_LiveRange_t live_range, const char  * proc_name, ecomp_Bool_t is_fatal) //  5386
-{ /* low_pc=0x123a069 */
+{
 	ecomp_Bool_t res; /* scope: local */                          //  5391
+
+	if( live_range <= 0 || live_range > 3 )
+		ecomp_InternalError_( "invalid live range" );
+
+	res = mem_CheckPoolLeaks( live_range, proc_name, is_fatal );
+
+	if( live_range > 1 )
+	{
+		if( !scr_GetStringOption( "only_proc_name" ))
+		{
+			res &= mem_CheckMallocLeaksInArea( MEM_AREA_ARRAY, is_fatal );
+		}
+		res &= mem_CheckMallocLeaksInArea( MEM_AREA_BITV_NPOOL, is_fatal );
+		res &= mem_CheckMallocLeaksInArea( MEM_AREA_BUFF, is_fatal );
+	}
+
+	return res;
 }
 
 void mem_Finish(void)                                                 //  5432
-{ /* low_pc=0x123a119 */
+{
+	mem_DeleteAutoPools( ECOMP_TRUE );
+	mem_PrintMaxUsage();
 }
 
 void mem_InitOptions(void)                                            //  5456
-{ /* low_pc=0x123a12f */
+{
 	int bool_opt; /* scope: local */                              //  5459
+
+	ecomp_Assert( !mem_IsBoolOptionsInit );
+
+	if( scr_GetBoolOptionWithDefault( "malloc_trace", ECOMP_FALSE ))
+		mem_SetMallocTrace( ECOMP_TRUE );
+
+	if( scr_GetBoolOptionWithDefault( "print_mem_top_usage", ECOMP_FALSE ))
+		atexit( mem_PrintTopUsage );
+
+	for( bool_opt = 0; bool_opt < ECOMP_ARRAYSIZE( mem_BoolOptions ); bool_opt++ )
+	{
+		mem_BoolOptions[bool_opt] = scr_GetBoolOptionWithDefault( mem_BoolOptionStrings[bool_opt], ECOMP_FALSE );
+	}
+
+	if( !scr_GetBoolOptionWithDefault( "save_eir_early", ECOMP_FALSE ))
+	{
+		mem_TraceMallocEvent = scr_GetIntOptionWithDefault( "mem_trace_malloc_event", 0 );
+		mem_TracePoolID = scr_GetIntOptionWithDefault( "mem_trace_pool_id", 0 );
+		if(( mem_MaxUsageFile = scr_GetStringOption( "max_mem_file" )))
+		{
+			mem_MaxUsageFile = strdup( mem_MaxUsageFile );
+			mem_IsTraceMaxUsage = ECOMP_TRUE;
+		}
+	}
+
+	mem_IsBoolOptionsInit = ECOMP_TRUE;
+	mem_LastPoolNumEarly = mem_LastPoolNum;
 }
 
 void mem_PrintPoolEntries(mem_Pool_ref pool, mem_Size_t print_limit)  //  5540
@@ -733,21 +958,66 @@ void mem_PrintPoolEntries(mem_Pool_ref pool, mem_Size_t print_limit)  //  5540
 	mem_EntryPtr_t entry_p; /* scope: local */                    //  5545
 	mem_Search_t iter_s; /* scope: local */                       //  5546
 	mem_Size_t print_num; /* scope: local */                      //  5547
+
+
+	print_num = 0;
+
+	if( MEM_ENTRY_PTR( pool ) == 0 )
+	{
+		puts( "(NULL PULL)" );
+		return;
+	}
+
+	for( entry = mem_FirstEntry( pool, &iter_s );
+		  !mem_IsNotRefNull( entry );
+		  entry = mem_NextEntry( &iter_s ) )
+	{
+		entry_p = mem_GetEntryUnsafe( entry );
+
+		print_num++;
+
+		if( print_limit != 0 && print_num > print_limit )
+			break;
+
+		printf( "  entry %zu: %p", print_num, entry_p );
+		putchar( '\n' );
+	}
+
+	printf( "total %zu of %zu entries printed\n", print_num, mem_GetPoolNumEntries( pool ));
+	puts( "hint: build compiler with HOST_CFLAGS_ADD=-DMEM_ENTRY_ID option to see entries ID" );
 }
 
 ecomp_Bool_t mem_IsRefDeleted(mem_Entry_ref entry_ref, ecomp_Bool_t * is_gen) //  5687
-{ /* low_pc=0x123a3b4 */
+{
 	mem_EntryPtr_t entry_p; /* scope: local */                    //  5691
+
+	if( is_gen ) *is_gen = ECOMP_FALSE;
+
+	if( MEM_ENTRY_PTR( entry_ref ) == 0 )
+		return ECOMP_FALSE;
+
+	if( MEM_ENTRY_HIDDENDATA( entry_ref )->del == 1 )
+		return ECOMP_TRUE;
+
+	if( MEM_ENTRY_HIDDENDATA( entry_ref )->gen != MEM_ENTRY_GEN( entry_ref ))
+		return ECOMP_FALSE;
+
+	if( is_gen ) *is_gen = ECOMP_TRUE;
+
+	return ECOMP_TRUE;
 }
 
 void mem_PrintRef(mem_Entry_ref ref)                                  //  5725
-{ /* low_pc=0x123a43f */
+{
+	printf( "%p (gen %zu)", (void *)MEM_ENTRY_PTR( ref ), MEM_ENTRY_GEN( ref ));
 }
 
 const char  * mem_GetRefStr(mem_Entry_ref ref)                        //  5753
-{ /* low_pc=0x123a477 */
-	char str; /* scope: global */                                 //  5761
-}
+{
+	static char                       str[32]; /* line: 5761, size: 32, scope: global */
 
-static char                       str[32]; /* line: 5761, size: 32, scope: global */
+	str_Printf( str, sizeof( str ), "%p", ref.ref );
+
+	return str;
+}
 

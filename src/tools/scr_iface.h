@@ -11,3 +11,4 @@ typedef enum {
 	SCR_LAST_VAR_TYPE = 6,
 } scr_VarType_t; /* size: 4 */
 
+#define scr_IsBoolOptionSet( opt ) scr_GetBoolOptionWithDefault(( opt ), ECOMP_FALSE )

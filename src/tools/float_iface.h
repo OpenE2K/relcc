@@ -20,3 +20,8 @@ typedef enum {
 	FLOAT_CMP_UNORDERED    = 3,
 } float_CmpResult_t; /* size: 4 */
 
+// STOP GENERATED CODE
+
+//
+// float.c
+//
